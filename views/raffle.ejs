@@ -34,6 +34,10 @@
     <% if (remainingCount > 0 && raffle.status === 'active') { %>
       <section class="entry-section">
         <h2>參加抽獎</h2>
+        <div class="payment-alert">
+          <p>⚠️ <strong>請先完成付款再填寫資料抽獎</strong></p>
+          <p>未付款嘅抽獎結果不會被保留，請付款後再抽</p>
+        </div>
         <form id="drawForm" class="draw-form">
           <div class="form-group">
             <label for="name">姓名</label>
