@@ -32,14 +32,27 @@ function initRafflePage(raffleId) {
   const closeBtn = document.getElementById('closeResult');
   const resultContent = document.getElementById('resultContent');
 
+  // Get current user from localStorage
+  let currentUserId = null;
+  const userJson = localStorage.getItem('ikr_user');
+  if (userJson) {
+    const user = JSON.parse(userJson);
+    currentUserId = user.id;
+  }
+
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
+      const code = document.getElementById('verification_code').value.trim();
       const name = document.getElementById('name').value.trim();
       const contact = document.getElementById('contact').value.trim();
       const drawBtn = document.getElementById('drawBtn');
 
+      if (!code) {
+        alert('請輸入驗證碼');
+        return;
+      }
       if (!name || !contact) {
         alert('請填寫姓名和聯絡方式');
         return;
@@ -51,7 +64,12 @@ function initRafflePage(raffleId) {
       try {
         const result = await apiRequest(`/api/raffle/${currentRaffleId}/draw`, {
           method: 'POST',
-          body: JSON.stringify({ name, contact }),
+          body: JSON.stringify({ 
+            name, 
+            contact, 
+            code,
+            userId: currentUserId 
+          }),
         });
 
         // Show result
@@ -119,6 +137,101 @@ function initAdminDashboard() {
       }
     });
   });
+}
+
+// ============================================
+// Verification Codes Modal (Admin)
+// ============================================
+let currentRaffleIdForCodes = null;
+
+function initCodesModal() {
+  const modal = document.getElementById('codesModal');
+  const closeBtn = document.getElementById('closeCodesModal');
+  const generateBtn = document.getElementById('generateBtn');
+
+  // Open modal when clicking codes button
+  document.querySelectorAll('.view-codes').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentRaffleIdForCodes = parseInt(btn.dataset.id);
+      document.getElementById('codesModalTitle').textContent = 
+        `驗證碼管理 - ${btn.dataset.title}`;
+      modal.classList.remove('hidden');
+      loadCodes();
+    });
+  });
+
+  // Close modal
+  closeBtn.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+
+  // Click outside to close
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.add('hidden');
+    }
+  });
+
+  // Generate new codes
+  generateBtn.addEventListener('click', async () => {
+    if (!currentRaffleIdForCodes) return;
+
+    const count = parseInt(document.getElementById('generateCount').value);
+    if (!count || count < 1) {
+      alert('請輸入正確數量');
+      return;
+    }
+
+    try {
+      const result = await apiRequest(`/api/admin/raffles/${currentRaffleIdForCodes}/generate-codes`, {
+        method: 'POST',
+        body: JSON.stringify({ count })
+      });
+
+      alert(`成功生成 ${result.count} 個驗證碼`);
+      loadCodes();
+      document.getElementById('generateCount').value = 1;
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  async function loadCodes() {
+    if (!currentRaffleIdForCodes) return;
+
+    try {
+      const result = await apiRequest(`/api/admin/raffles/${currentRaffleIdForCodes}/codes`);
+      const codes = result.codes;
+      const listEl = document.getElementById('codesList');
+      const countEl = document.getElementById('codesCount');
+
+      countEl.textContent = codes.length;
+
+      if (codes.length === 0) {
+        listEl.innerHTML = '<div class="empty-state"><p>尚未生成任何驗證碼</p></div>';
+        return;
+      }
+
+      let html = '<div class="codes-table-wrapper"><table class="codes-table"><thead><tr><th>驗證碼</th><th>狀態</th><th>生成時間</th></tr></thead><tbody>';
+
+      codes.forEach(code => {
+        const status = code.used ? '已使用' : '未使用';
+        const statusClass = code.used ? 'used' : 'unused';
+        html += `
+          <tr>
+            <td><code class="code-text">${code.code}</code></td>
+            <td><span class="status-badge ${statusClass}">${status}</span></td>
+            <td>${new Date(code.created_at).toLocaleString('zh-HK')}</td>
+          </tr>
+        `;
+      });
+
+      html += '</tbody></table></div>';
+      listEl.innerHTML = html;
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 }
 
 // ============================================

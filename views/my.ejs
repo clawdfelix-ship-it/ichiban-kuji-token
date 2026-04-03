@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的抽獎記錄 - 一番賞線上抽獎</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="back-link">← 返回首頁</a>
+      <h1>我的抽獎記錄</h1>
+    </div>
+  </header>
+
+  <main class="container">
+    <div id="loginRequired" class="empty-state hidden">
+      <p>請先登入會員才能查看你的抽獎記錄</p>
+      <a href="/login" class="btn btn-primary">立即登入</a>
+    </div>
+
+    <div id="myContent" class="hidden">
+      <h2>我的抽獎記錄</h2>
+      <div id="entriesList" class="my-entries-list">
+        <!-- loaded by JS -->
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; <%= new Date().getFullYear() %> Ichiban Kuji Raffle System</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Check if user is logged in
+      const userJson = localStorage.getItem('ikr_user');
+      if (!userJson) {
+        document.getElementById('loginRequired').classList.remove('hidden');
+        return;
+      }
+
+      const user = JSON.parse(userJson);
+      document.getElementById('myContent').classList.remove('hidden');
+
+      try {
+        const result = await apiRequest(`/api/my/entries?userId=${user.id}`);
+        const entries = result.entries;
+
+        const listEl = document.getElementById('entriesList');
+        if (entries.length === 0) {
+          listEl.innerHTML = '<div class="empty-state"><p>你暫時未有抽獎記錄</p></div>';
+          return;
+        }
+
+        let html = '';
+        entries.forEach(entry => {
+          html += `
+            <div class="my-entry-card ${entry.prize_is_final ? 'final' : ''}">
+              <div class="my-entry-header">
+                <strong>${entry.raffle_title}</strong>
+                <span class="date">${new Date(entry.drawn_at).toLocaleString('zh-HK')}</span>
+              </div>
+              <div class="my-entry-prize">
+                ${entry.prize_tier ? `<span class="tier-badge ${entry.prize_tier.toLowerCase()}">${entry.prize_tier}</span>` : ''}
+                ${entry.prize_is_final ? '<span class="final-badge">最終賞</span>' : ''}
+                <strong>${entry.prize_name}</strong>
+              </div>
+            </div>
+          `;
+        });
+
+        listEl.innerHTML = html;
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  </script>
+</body>
+</html>

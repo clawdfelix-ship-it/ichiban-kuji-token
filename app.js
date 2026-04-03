@@ -97,6 +97,8 @@ async function initDatabase() {
         prize_id INTEGER,
         buyer_name TEXT,
         buyer_contact TEXT,
+        user_id INTEGER NULL,
+        verification_code_id INTEGER NULL,
         drawn_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(raffle_id) REFERENCES raffles(id),
         FOREIGN KEY(prize_id) REFERENCES prizes(id)
@@ -108,10 +110,22 @@ async function initDatabase() {
         raffle_id INTEGER,
         prize_id INTEGER,
         buyer_name TEXT,
+        user_id INTEGER NULL,
         drawn_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(entry_id) REFERENCES entries(id),
         FOREIGN KEY(raffle_id) REFERENCES raffles(id),
         FOREIGN KEY(prize_id) REFERENCES prizes(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS verification_codes (
+        id SERIAL PRIMARY KEY,
+        raffle_id INTEGER,
+        code TEXT UNIQUE,
+        used BOOLEAN DEFAULT FALSE,
+        used_at TIMESTAMP NULL,
+        user_id INTEGER NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(raffle_id) REFERENCES raffles(id)
       );
     `);
 
@@ -133,6 +147,52 @@ async function initDatabase() {
 }
 
 initDatabase();
+
+// ===== Auth Routes (Public) =====
+
+// User login page
+app.get('/login', (req, res) => {
+  res.render('login');
+});
+
+// User register page
+app.get('/register', (req, res) => {
+  res.render('register');
+});
+
+// User my page - list my raffle entries
+app.get('/my', async (req, res) => {
+  // TODO: Add session auth
+  res.render('my');
+});
+
+// Register API
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, contact } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: '請填寫用戶名和密碼' });
+    }
+    
+    // Check if username exists
+    const existing = await query('SELECT id FROM users WHERE username = $1', [username]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: '用戶名已存在' });
+    }
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+    const result = await query(`
+      INSERT INTO users (username, password_hash, is_admin, contact)
+      VALUES ($1, $2, 0, $3)
+      RETURNING id
+    `, [username, passwordHash, contact || null]);
+    
+    res.json({ success: true, userId: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // ===== Public Routes =====
 
@@ -282,11 +342,27 @@ app.get('/api/raffle/:id/winners', async (req, res) => {
   }
 });
 
-// Draw prize endpoint
+// Draw prize endpoint - requires verification code
 app.post('/api/raffle/:id/draw', async (req, res) => {
   try {
-    const { name, contact } = req.body;
+    const { name, contact, code, userId } = req.body;
     const raffleId = req.params.id;
+    
+    // Check verification code first
+    if (!code) {
+      return res.status(400).json({ error: '需要輸入抽獎驗證碼' });
+    }
+    
+    const codeResult = await query(`
+      SELECT * FROM verification_codes 
+      WHERE code = $1 AND raffle_id = $2 AND used = false
+    `, [code, raffleId]);
+    
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ error: '驗證碼無效或已使用' });
+    }
+    
+    const verificationCode = codeResult.rows[0];
     
     // Check raffle is active and has remaining boxes
     const raffleResult = await query('SELECT * FROM raffles WHERE id = $1', [raffleId]);
@@ -354,17 +430,24 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       
       // Create entry
       const entryResult = await query(`
-        INSERT INTO entries (raffle_id, prize_id, buyer_name, buyer_contact)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO entries (raffle_id, prize_id, buyer_name, buyer_contact, user_id, verification_code_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
-      `, [raffleId, drawnPrize.id, name, contact]);
+      `, [raffleId, drawnPrize.id, name, contact, userId || null, verificationCode.id]);
       const entryId = entryResult.rows[0].id;
+      
+      // Mark verification code as used
+      await query(`
+        UPDATE verification_codes 
+        SET used = true, used_at = CURRENT_TIMESTAMP, user_id = $1 
+        WHERE id = $2
+      `, [userId || null, verificationCode.id]);
       
       // Record winner
       await query(`
-        INSERT INTO winners (entry_id, raffle_id, prize_id, buyer_name)
-        VALUES ($1, $2, $3, $4)
-      `, [entryId, raffleId, drawnPrize.id, name]);
+        INSERT INTO winners (entry_id, raffle_id, prize_id, buyer_name, user_id)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [entryId, raffleId, drawnPrize.id, name, userId || null]);
       
       await query('COMMIT');
       
@@ -534,6 +617,111 @@ app.post('/api/admin/raffles/:id/status', async (req, res) => {
     await query('UPDATE raffles SET status = $1 WHERE id = $2', [status, req.params.id]);
     
     res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Generate verification codes (admin only)
+app.post('/api/admin/raffles/:id/generate-codes', async (req, res) => {
+  try {
+    const { count } = req.body;
+    const raffleId = parseInt(req.params.id);
+    const numCount = parseInt(count);
+    
+    if (!numCount || numCount < 1) {
+      return res.status(400).json({ error: '請輸入正確數量' });
+    }
+    
+    const codes = [];
+    // Generate random 8-character codes
+    for (let i = 0; i < numCount; i++) {
+      const code = Math.random().toString(36).substring(2, 10);
+      await query(`
+        INSERT INTO verification_codes (raffle_id, code)
+        VALUES ($1, $2)
+      `, [raffleId, code]);
+      codes.push(code);
+    }
+    
+    res.json({ 
+      success: true, 
+      codes: codes,
+      count: codes.length
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get verification codes list for a raffle
+app.get('/api/admin/raffles/:id/codes', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT * FROM verification_codes
+      WHERE raffle_id = $1
+      ORDER BY created_at DESC
+    `, [req.params.id]);
+    
+    res.json({ codes: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get my entries (for logged in user)
+app.get('/api/my/entries', async (req, res) => {
+  try {
+    // TODO: Add actual auth, for now just query by user_id
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(400).json({ error: '需要用戶ID' });
+    }
+    
+    const result = await query(`
+      SELECT e.*, r.title as raffle_title, p.name as prize_name, p.tier as prize_tier, p.is_final as prize_is_final
+      FROM entries e
+      JOIN raffles r ON e.raffle_id = r.id
+      LEFT JOIN prizes p ON e.prize_id = p.id
+      WHERE e.user_id = $1
+      ORDER BY e.drawn_at DESC
+    `, [userId]);
+    
+    res.json({ entries: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Login API
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: '請填寫用戶名和密碼' });
+    }
+    
+    const result = await query('SELECT * FROM users WHERE username = $1', [username]);
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: '用戶名或密碼錯誤' });
+    }
+    
+    const user = result.rows[0];
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(400).json({ error: '用戶名或密碼錯誤' });
+    }
+    
+    // Don't return password hash
+    const { password_hash, ...userWithoutPassword } = user;
+    res.json({ 
+      success: true, 
+      user: userWithoutPassword 
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

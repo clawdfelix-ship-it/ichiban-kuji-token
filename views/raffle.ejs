@@ -35,10 +35,17 @@
       <section class="entry-section">
         <h2>參加抽獎</h2>
         <div class="payment-alert">
-          <p>⚠️ <strong>請先完成付款再填寫資料抽獎</strong></p>
-          <p>未付款嘅抽獎結果不會被保留，請付款後再抽</p>
+          <p>🔒 <strong>需要驗證碼才能抽獎</strong></p>
+          <p>請先付款給管理員，獲得驗證碼後輸入下方抽獎</p>
         </div>
         <form id="drawForm" class="draw-form">
+          <div class="form-group">
+            <label for="verification_code">驗證碼</label>
+            <input type="text" id="verification_code" name="verification_code" required placeholder="請輸入管理員俾你的驗證碼">
+          </div>
+          <% 
+          // Get current user from localStorage via JS
+          %>
           <div class="form-group">
             <label for="name">姓名</label>
             <input type="text" id="name" name="name" required placeholder="請輸入你的姓名">
@@ -47,7 +54,7 @@
             <label for="contact">聯絡方式</label>
             <input type="text" id="contact" name="contact" required placeholder="請輸入電話或WhatsApp">
           </div>
-          <button type="submit" id="drawBtn" class="btn btn-primary btn-large">開始抽獎!</button>
+          <button type="submit" id="drawBtn" class="btn btn-primary btn-large">確認驗證碼，開始抽獎!</button>
         </form>
       </section>
 
