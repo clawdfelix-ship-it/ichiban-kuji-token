@@ -9,19 +9,21 @@
 :root {
   --primary-color: #d32f2f;
   --primary-dark: #9a0007;
-  --secondary-color: #1565c0;
+  --secondary-color: #424242;
   --success-color: #2e7d32;
   --warning-color: #f57c00;
   --danger-color: #c62828;
   --bg-color: #f5f5f5;
   --card-bg: #ffffff;
   --text-primary: #1a1a1a;
-  --text-secondary: #666666;
+  --text-secondary: #616161; /* Improved contrast from #666666 */
+  --text-tertiary: #757575;
   --border-color: #e0e0e0;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
   --border-radius: 8px;
   --container-max: 1200px;
+  --touch-min: 48px; /* Minimum touch target size */
 }
 
 /* Base Styles */
@@ -33,6 +35,8 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Container */
@@ -47,8 +51,8 @@ body {
 header {
   background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
   color: white;
-  padding: 24px 0;
-  margin-bottom: 24px;
+  padding: 20px 0; /* Reduced padding for mobile */
+  margin-bottom: 20px; /* Reduced margin for better spacing */
   box-shadow: var(--shadow);
 }
 
@@ -56,10 +60,11 @@ header h1 {
   font-size: 1.8rem;
   margin-bottom: 4px;
   font-weight: 700;
+  line-height: 1.3; /* Improved line height for multiple lines */
 }
 
 header p {
-  opacity: 0.9;
+  opacity: 0.95; /* Improved contrast */
   font-size: 1rem;
 }
 
@@ -68,21 +73,24 @@ header p {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px; /* Reduced gap for tighter layout */
 }
 
 .header-text {
-  flex: 1;
+  flex: 1 1 250px; /* Flex grow with minimum width */
+  min-width: 0; /* Allow text truncation */
 }
 
 .header-buttons {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .back-link {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
   text-decoration: none;
   font-size: 0.9rem;
   display: inline-block;
@@ -97,15 +105,15 @@ header p {
 .raffle-header-stats {
   margin-top: 12px;
   display: flex;
-  gap: 12px;
+  gap: 10px; /* Reduced gap */
   flex-wrap: wrap;
 }
 
 .stat-badge {
   background: rgba(255, 255, 255, 0.2);
-  padding: 4px 12px;
+  padding: 6px 12px; /* Increased vertical padding for touch */
   border-radius: 20px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .stat-badge.price {
@@ -116,46 +124,52 @@ header p {
 /* Main */
 main {
   flex: 1;
-  padding-bottom: 48px;
+  padding-bottom: 32px; /* Reduced bottom padding for mobile */
 }
 
 /* Footer */
 footer {
   background-color: var(--card-bg);
-  padding: 24px 0;
+  padding: 20px 0; /* Reduced padding */
   margin-top: auto;
   border-top: 1px solid var(--border-color);
   color: var(--text-secondary);
   text-align: center;
+  font-size: 0.9rem;
 }
 
-/* Headings */
+/* Headings - Improved Visual Hierarchy */
 h2 {
-  font-size: 1.5rem;
-  margin-bottom: 20px;
+  font-size: 1.6rem; /* Slightly larger */
+  margin-bottom: 24px; /* Increased margin for better separation */
   color: var(--text-primary);
   border-bottom: 2px solid var(--border-color);
-  padding-bottom: 8px;
+  padding-bottom: 10px;
+  line-height: 1.3;
 }
 
 h3 {
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   margin-bottom: 12px;
+  line-height: 1.4;
 }
 
 .pool-title {
   background-color: var(--secondary-color);
   color: white;
-  padding: 8px 16px;
+  padding: 10px 16px; /* Increased vertical padding */
   border-radius: var(--border-radius);
-  margin: 24px 0 16px;
+  margin: 28px 0 18px; /* Improved spacing */
   font-size: 1.1rem;
 }
 
-/* Buttons */
+/* Buttons - Improved Touch Targets */
 .btn {
-  display: inline-block;
-  padding: 10px 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-min);
+  padding: 12px 20px; /* Increased vertical padding for better touch */
   border: none;
   border-radius: var(--border-radius);
   font-size: 1rem;
@@ -164,9 +178,11 @@ h3 {
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
+  text-align: center;
 }
 
 .btn-sm {
+  min-height: 36px;
   padding: 6px 12px;
   font-size: 0.875rem;
 }
@@ -175,6 +191,7 @@ h3 {
   padding: 14px 28px;
   font-size: 1.1rem;
   font-weight: 600;
+  min-height: 52px; /* Larger touch target */
 }
 
 .btn-primary {
@@ -227,28 +244,31 @@ h3 {
   cursor: not-allowed;
 }
 
-/* Forms */
+/* Forms - Improved Mobile Usability */
 .form-group {
-  margin-bottom: 16px;
+  margin-bottom: 20px; /* Increased bottom margin for better spacing */
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
+  margin-bottom: 8px; /* Increased margin */
+  font-weight: 600; /* Bolder for better contrast */
   color: var(--text-primary);
+  font-size: 0.95rem;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 10px 12px;
+  padding: 14px 12px; /* Increased vertical padding for better touch */
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  font-size: 1rem;
+  font-size: 16px; /* Larger font to prevent iOS zoom */
   font-family: inherit;
   background-color: white;
+  min-height: 48px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-group input:focus,
@@ -256,14 +276,15 @@ h3 {
 .form-group textarea:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.1);
+  box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.15);
 }
 
 .form-group small {
   display: block;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 .form-group.checkbox label {
@@ -271,11 +292,13 @@ h3 {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  min-height: var(--touch-min);
+  padding: 8px 0;
 }
 
 .form-group.checkbox input {
   width: auto;
-  transform: scale(1.2);
+  transform: scale(1.3); /* Slightly larger for easier touch */
 }
 
 .form-row {
@@ -285,7 +308,7 @@ h3 {
 }
 
 .form-actions {
-  margin-top: 24px;
+  margin-top: 28px; /* Increased margin */
   text-align: center;
 }
 
@@ -294,13 +317,56 @@ h3 {
   gap: 12px;
   justify-content: center;
   margin-top: 32px;
+  flex-wrap: wrap;
 }
 
 .draw-form {
   background: var(--card-bg);
-  padding: 24px;
+  padding: 20px; /* Reduced padding for mobile */
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
+}
+
+/* Payment Alert */
+.payment-alert {
+  background: #fff3e0;
+  border-left: 4px solid var(--warning-color);
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.payment-alert p {
+  color: #e65100;
+  margin: 4px 0;
+}
+
+/* Auth Forms */
+.auth-form {
+  max-width: 500px;
+  margin: 0 auto;
+  background: var(--card-bg);
+  padding: 24px 20px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.auth-footer a {
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.auth-footer a:hover {
+  text-decoration: underline;
 }
 
 /* Raffle List (Home) */
@@ -330,6 +396,7 @@ h3 {
 .raffle-card p {
   color: var(--text-secondary);
   margin-bottom: 16px;
+  line-height: 1.5;
 }
 
 .raffle-stats {
@@ -337,6 +404,8 @@ h3 {
   justify-content: space-between;
   margin-bottom: 16px;
   font-size: 0.9rem;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .raffle-stats .stat {
@@ -363,6 +432,7 @@ h3 {
 
 .prize-card:hover {
   transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
 }
 
 .prize-card.final-prize {
@@ -387,7 +457,7 @@ h3 {
 }
 
 .tier-badge {
-  padding: 2px 10px;
+  padding: 4px 10px; /* Increased vertical padding */
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: bold;
@@ -407,7 +477,7 @@ h3 {
 .final-badge {
   background: linear-gradient(135deg, #ffd700, #ffaa00);
   color: #333;
-  padding: 2px 10px;
+  padding: 4px 10px; /* Increased vertical padding */
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: bold;
@@ -416,7 +486,7 @@ h3 {
 .count-badge {
   margin-left: auto;
   background: #f0f0f0;
-  padding: 2px 8px;
+  padding: 4px 8px; /* Increased vertical padding */
   border-radius: 10px;
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -426,11 +496,13 @@ h3 {
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 6px;
+  line-height: 1.4;
 }
 
 .prize-description {
   color: var(--text-secondary);
   font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .sold-out-overlay {
@@ -444,6 +516,7 @@ h3 {
   font-size: 1.5rem;
   font-weight: bold;
   letter-spacing: 4px;
+  z-index: 10;
 }
 
 /* Winner List */
@@ -486,6 +559,7 @@ h3 {
 
 .empty-state p {
   margin-bottom: 16px;
+  line-height: 1.5;
 }
 
 /* Alert */
@@ -503,7 +577,7 @@ h3 {
   color: #e65100;
 }
 
-/* Modal */
+/* Modal - Improved Mobile Positioning */
 .modal {
   position: fixed;
   top: 0;
@@ -516,6 +590,8 @@ h3 {
   justify-content: center;
   z-index: 1000;
   padding: 16px;
+  overflow-y: auto; /* Allow scrolling on small screens */
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal.hidden {
@@ -525,11 +601,14 @@ h3 {
 .modal-content {
   background: var(--card-bg);
   border-radius: var(--border-radius);
-  padding: 32px 24px;
+  padding: 28px 20px; /* Reduced horizontal padding for mobile */
   max-width: 500px;
   width: 100%;
   text-align: center;
   box-shadow: var(--shadow-lg);
+  max-height: 90vh; /* Prevent modal from exceeding viewport */
+  overflow-y: auto;
+  margin: auto; /* Center properly on all screen sizes */
 }
 
 .modal-content h2 {
@@ -544,10 +623,11 @@ h3 {
 .result-content .result-prize {
   font-size: 1.5rem;
   font-weight: bold;
-  padding: 24px;
+  padding: 24px 16px; /* Adjusted padding */
   background: linear-gradient(135deg, #fff3e0, #ffe0b2);
   border-radius: var(--border-radius);
   margin-bottom: 16px;
+  line-height: 1.4;
 }
 
 .result-content .final-result {
@@ -557,6 +637,54 @@ h3 {
 
 .result-content p {
   color: var(--text-secondary);
+}
+
+/* Codes Modal (Admin) */
+.codes-table-wrapper {
+  overflow-x: auto;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.codes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.codes-table th,
+.codes-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.codes-table thead {
+  background-color: #fafafa;
+  font-weight: 600;
+}
+
+.code-text {
+  font-family: monospace;
+  font-size: 0.9rem;
+  background: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.status-badge.unused {
+  background: #c8e6c9;
+  color: #2e7d32;
+}
+
+.status-badge.used {
+  background: #cfd8dc;
+  color: #37474f;
+}
+
+.codes-count-info {
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 /* Admin */
@@ -574,6 +702,7 @@ h3 {
   border-radius: var(--border-radius);
   overflow-x: auto;
   box-shadow: var(--shadow);
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-table {
@@ -662,36 +791,119 @@ h3 {
 
 .prize-admin-info h4 {
   margin-bottom: 4px;
+  font-size: 1rem;
 }
 
 .prize-admin-info p {
   font-size: 0.85rem;
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .form-card {
   background: var(--card-bg);
-  padding: 24px;
+  padding: 24px 20px; /* Adjusted padding */
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
 }
 
 /* Sections */
 section {
-  margin-bottom: 36px;
+  margin-bottom: 32px; /* Reduced for better mobile spacing */
 }
 
 .entry-section {
   background: var(--card-bg);
-  padding: 24px;
+  padding: 20px; /* Reduced padding for mobile */
   border-radius: var(--border-radius);
   box-shadow: var(--shadow);
 }
 
-/* Mobile Responsive */
+/* User My Page */
+.user-section {
+  background: var(--card-bg);
+  padding: 20px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+}
+
+.user-section h2 {
+  border-bottom: none;
+  margin-bottom: 16px;
+  padding-bottom: 0;
+}
+
+.user-winnings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.winning-card {
+  background: #fafafa;
+  padding: 16px;
+  border-radius: var(--border-radius);
+  border-left: 3px solid var(--secondary-color);
+}
+
+.winning-card .prize-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.winning-card .raffle-title {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.winning-card .drawn-at {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+
+/* Mobile Responsive - Complete Improvements */
 @media (max-width: 768px) {
+  header {
+    padding: 16px 0;
+    margin-bottom: 16px;
+  }
+
   header h1 {
+    font-size: 1.5rem; /* Slightly increased for better readability */
+  }
+
+  header p {
+    font-size: 0.95rem;
+  }
+
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-buttons {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .header-buttons .btn {
+    flex: 1 1 auto;
+    min-width: 80px;
+  }
+
+  .container {
+    padding: 0 12px; /* Reduced side padding on mobile */
+  }
+
+  h2 {
     font-size: 1.4rem;
+    margin-bottom: 20px;
   }
 
   .form-row {
@@ -700,13 +912,20 @@ section {
 
   .prize-management {
     grid-template-columns: 1fr;
+    gap: 16px; /* Reduced gap on mobile */
   }
 
   .prize-list {
     grid-template-columns: 1fr;
+    gap: 12px; /* Reduced gap on mobile */
   }
 
   .raffle-list {
+    grid-template-columns: 1fr;
+    gap: 16px; /* Reduced gap on mobile */
+  }
+
+  .user-winnings {
     grid-template-columns: 1fr;
   }
 
@@ -718,23 +937,43 @@ section {
     display: block;
     margin-bottom: 16px;
     border-bottom: 2px solid var(--border-color);
+    background: white;
   }
 
   .winner-table td {
     display: block;
     text-align: right;
-    padding: 8px 16px;
+    padding: 10px 16px; /* Increased padding for better spacing */
     border-bottom: 1px dotted var(--border-color);
+    min-height: 44px;
   }
 
   .winner-table td::before {
     content: attr(data-label);
     float: left;
     font-weight: bold;
+    color: var(--text-primary);
   }
 
   .admin-table-wrapper {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal {
+    padding: 12px; /* Less padding on mobile */
+    align-items: center;
+  }
+
+  .modal-content {
+    padding: 24px 16px;
+    max-height: 85vh;
+    margin: auto;
+  }
+
+  .result-content .result-prize {
+    font-size: 1.3rem; /* Slightly smaller on mobile */
+    padding: 20px 12px;
   }
 
   .final-actions {
@@ -743,5 +982,75 @@ section {
 
   .final-actions .btn {
     width: 100%;
+  }
+
+  .form-card {
+    padding: 20px 16px;
+  }
+
+  .entry-section {
+    padding: 16px;
+  }
+
+  .draw-form {
+    padding: 16px;
+  }
+
+  .auth-form {
+    padding: 20px 16px;
+  }
+
+  .btn {
+    font-size: 16px; /* Prevent iOS zoom */
+  }
+
+  .raffle-header-stats {
+    gap: 8px;
+  }
+
+  .stat-badge {
+    font-size: 0.8rem;
+    padding: 4px 10px;
+  }
+}
+
+/* Small phone extra adjustments */
+@media (max-width: 360px) {
+  .header-buttons {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .header-buttons .btn {
+    width: 100%;
+  }
+
+  .btn-large {
+    width: 100%;
+  }
+
+  .sold-out-overlay {
+    font-size: 1.2rem;
+    padding: 6px 24px;
+    letter-spacing: 2px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .raffle-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .prize-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Improved contrast for accessibility */
+@media (prefers-contrast: more) {
+  :root {
+    --text-secondary: #424242;
+    --border-color: #bdbdbd;
   }
 }
