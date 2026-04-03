@@ -1,9 +1,9 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.Port || 3000;
 
 // Middleware
 app.use(express.static('public'));
@@ -11,10 +11,17 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // Database setup
-const db = new Database('./raffle.db');
+const db = new sqlite3.Database('./raffle.db', (err) => {
+  if (err) {
+    console.error('Error opening database', err);
+  } else {
+    console.log('Connected to SQLite database');
+  }
+});
 
 // Create tables if not exists
-db.exec(`
+db.serialize(() => {
+  db.run(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
@@ -73,78 +80,122 @@ db.exec(`
     FOREIGN KEY(prize_id) REFERENCES prizes(id)
   );
 );
+});
 
 // Create default admin if not exists
-const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE is_admin = 1').get().count;
-if (adminCount === 0) {
-  const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
-  const passwordHash = bcrypt.hashSync(defaultPassword, 10);
-  db.prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)').run('admin', passwordHash, 1);
-  console.log('Created default admin user: admin / ' + defaultPassword);
-  console.log('⚠️  Change this password in production!');
-}
+db.get('SELECT COUNT(*) as count FROM users WHERE is_admin = 1', [], (err, row) => {
+  if (err) {
+    console.error('Error checking admin count', err);
+    return;
+  }
+  const adminCount = row.count;
+  if (adminCount === 0) {
+    const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+    const passwordHash = bcrypt.hashSync(defaultPassword, 10);
+    db.run('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)', ['admin', passwordHash, 1], (err) => {
+      if (!err) {
+        console.log('Created default admin user: admin / ' + defaultPassword);
+        console.log('⚠️  Change this password in production!');
+      }
+    });
+  }
+});
 
 // Auth middleware
 function requireAdmin(req, res, next) {
-  // Simple session-free auth for admin - uses password query param or form
-  // In production you'd want proper sessions, this is simple
+  // Simple session-free auth for admin - uses password from body/query
   const adminPassword = req.body.admin_password || req.query.admin_password;
   if (!adminPassword) {
     return res.status(401).json({ error: 'Admin password required' });
   }
-  const admin = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
-  if (!admin || !bcrypt.compareSync(adminPassword, admin.password_hash)) {
-    return res.status(401).json({ error: 'Invalid password' });
-  }
-  req.admin = admin;
-  next();
+  db.get('SELECT * FROM users WHERE username = ?', ['admin'], (err, admin) => {
+    if (err || !admin) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    if (!bcrypt.compareSync(adminPassword, admin.password_hash)) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    req.admin = admin;
+    next();
+  });
 }
 
 // API Routes
 
 // Get all active raffles
 app.get('/api/raffles', (req, res) => {
-  const raffles = db.prepare(`
+  db.all(`
     SELECT id, title, description, type, total_boxes, remaining_boxes, start_date, end_date 
     FROM raffles 
     WHERE status = 'active'
     ORDER BY created_at DESC
-  `).all();
-  
-  // Add prize stats for ichiban
-  const result = raffles.map(r => {
-    if (r.type !== 'ichiban') {
-      return r;
+  `, [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
     }
-    const prizeStats = db.prepare(`
-      SELECT tier, COUNT(*) as total, SUM(remaining_count) as remaining 
-      FROM prizes 
-      WHERE raffle_id = ? 
-      GROUP BY tier
-      ORDER BY tier
-    `).all(r.id);
-    return {
-      ...r,
-      prize_stats: prizeStats
-    };
+
+    // Add prize stats for ichiban
+    const result = Promise.all(rows.map(r => {
+      return new Promise((resolve) => {
+        if (r.type !== 'ichiban') {
+          return resolve(r);
+        }
+        db.all(`
+          SELECT tier, COUNT(*) as total, SUM(remaining_count) as remaining 
+          FROM prizes 
+          WHERE raffle_id = ? 
+          GROUP BY tier
+          ORDER BY tier
+        `, [r.id], (err, prizeStats) => {
+          if (err) {
+            resolve(r);
+          } else {
+            resolve({
+              ...r,
+              prize_stats: prizeStats
+            });
+          }
+        });
+      });
+    });
+
+    Promise.all(result).then(rows => {
+      res.json({ raffles: rows });
+    });
   });
-  
-  res.json({ raffles: result });
 });
 
 // Get single raffle
 app.get('/api/raffles/:id', (req, res) => {
-  const raffle = db.prepare('SELECT * FROM raffles WHERE id = ?').get(req.params.id);
-  if (!raffle) {
-    return res.status(404).json({ error: 'Raffle not found' });
-  }
-  
-  const entryCount = db.prepare('SELECT COUNT(*) as count FROM entries WHERE raffle_id = ?').get(req.params.id).count;
-  
-  res.json({ 
-    raffle, 
-    entry_count: entryCount,
-    is_closed: raffle.status !== 'active'
+  db.get('SELECT * FROM raffles WHERE id = ?', [req.params.id], (err, raffle) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (!raffle) {
+      return res.status(404).json({ error: 'Raffle not found' });
+    }
+
+    db.get('SELECT COUNT(*) as count FROM entries WHERE raffle_id = ?', [req.params.id], (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      let prizes = null;
+      if (raffle.type === 'ichiban') {
+        db.all('SELECT * FROM prizes WHERE raffle_id = ? ORDER BY tier, is_final DESC', [req.params.id], (err, prizeList) => {
+          res.json({
+            raffle,
+            entry_count: row.count,
+            prizes: prizeList
+          });
+        });
+      } else {
+        res.json({
+          raffle,
+          entry_count: row.count
+        });
+      }
+    });
   });
 });
 
@@ -152,244 +203,309 @@ app.get('/api/raffles/:id', (req, res) => {
 app.post('/api/raffles/:id/enter', (req, res) => {
   const { name, contact } = req.body;
   const raffleId = req.params.id;
-  
+
   if (!name || !contact) {
     return res.status(400).json({ error: 'Name and contact are required' });
   }
-  
-  const raffle = db.prepare('SELECT * FROM raffles WHERE id = ?').get(raffleId);
-  if (!raffle) {
-    return res.status(404).json({ error: 'Raffle not found' });
-  }
-  
-  if (raffle.status !== 'active') {
-    return res.status(400).json({ error: 'This raffle is closed' });
-  }
 
-  // Traditional single prize raffle
-  if (raffle.type !== 'ichiban') {
-    const info = db.prepare('INSERT INTO entries (raffle_id, name, contact) VALUES (?, ?, ?)').run(raffleId, name, contact);
-    return res.json({ success: true, entry_id: info.lastInsertRowid });
-  }
-
-  // Ichiban Kuji raffle - draw a prize immediately
-  if (raffle.remaining_boxes <= 0) {
-    return res.status(400).json({ error: 'All boxes are sold out' });
-  }
-
-  // Get all available prizes (remaining_count > 0)
-  const availablePrizes = db.prepare(`
-    SELECT * FROM prizes 
-    WHERE raffle_id = ? AND remaining_count > 0
-    ORDER BY RANDOM()
-  `).all(raffleId);
-
-  if (availablePrizes.length === 0) {
-    return res.status(400).json({ error: 'No prizes left' });
-  }
-
-  // Pick a random prize - weighted random by remaining count
-  // More remaining = higher chance (correct for ichiban kuji)
-  const totalWeight = availablePrizes.reduce((sum, p) => sum + p.remaining_count, 0);
-  let random = Math.floor(Math.random() * totalWeight);
-  let picked = null;
-
-  for (const prize of availablePrizes) {
-    random -= prize.remaining_count;
-    if (random <= 0) {
-      picked = prize;
-      break;
+  db.get('SELECT * FROM raffles WHERE id = ?', [raffleId], (err, raffle) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
     }
-  }
+    if (!raffle) {
+      return res.status(404).json({ error: 'Raffle not found' });
+    }
 
-  if (!picked) {
-    picked = availablePrizes[availablePrizes.length - 1];
-  }
+    if (raffle.status !== 'active') {
+      return res.status(400).json({ error: 'This raffle is closed' });
+    }
 
-  // Insert entry with prize
-  const info = db.prepare('INSERT INTO entries (raffle_id, name, contact, won_prize_id) VALUES (?, ?, ?, ?)').run(
-    raffleId, name, contact, picked.id
-  );
+    // Traditional single prize raffle
+    if (raffle.type !== 'ichiban') {
+      db.run('INSERT INTO entries (raffle_id, name, contact) VALUES (?, ?, ?)', [raffleId, name, contact], function(err) {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({ success: true, entry_id: this.lastID });
+      });
+      return;
+    }
 
-  // Decrement remaining count
-  db.prepare('UPDATE prizes SET remaining_count = remaining_count - 1 WHERE id = ?').run(picked.id);
+    // Ichiban Kuji raffle - draw prize immediately
+    if (raffle.remaining_boxes <= 0) {
+      return res.status(400).json({ error: 'All boxes are sold out' });
+    }
 
-  // Decrement remaining boxes
-  db.prepare('UPDATE raffles SET remaining_boxes = remaining_boxes - 1 WHERE id = ?').run(raffleId);
+    // Get all available prizes (remaining_count > 0)
+    db.all('SELECT * FROM prizes WHERE raffle_id = ? AND remaining_count > 0 ORDER BY RANDOM()', [raffleId], (err, availablePrizes) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
 
-  // Check if all boxes gone - close raffle
-  const newRemaining = raffle.remaining_boxes - 1;
-  if (newRemaining <= 0) {
-    db.prepare('UPDATE raffles SET status = "completed" WHERE id = ?').run(raffleId);
-  }
+      if (availablePrizes.length === 0) {
+        return res.status(400).json({ error: 'No prizes left' });
+      }
 
-  // Get final prize info for response
-  const wonPrize = {
-    id: picked.id,
-    tier: picked.tier,
-    name: picked.name,
-    is_final: picked.is_final,
-    pool_number: picked.pool_number
-  };
+      // Weighted random pick - more remaining = higher chance
+      const totalWeight = availablePrizes.reduce((sum, p) => sum + p.remaining_count, 0);
+      let random = Math.floor(Math.random() * totalWeight);
+      let picked = null;
 
-  res.json({ 
-    success: true, 
-    entry_id: info.lastInsertRowid,
-    prize: wonPrize,
-    remaining_boxes: newRemaining
+      for (const prize of availablePrizes) {
+        random -= prize.remaining_count;
+        if (random <= 0) {
+          picked = prize;
+          break;
+        }
+      }
+
+      if (!picked) {
+        picked = availablePrizes[availablePrizes.length - 1];
+      }
+
+      // Insert entry with prize
+      db.run('INSERT INTO entries (raffle_id, name, contact, won_prize_id) VALUES (?, ?, ?, ?)', [raffleId, name, contact, picked.id], function(err) {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+
+        // Decrement remaining count
+        db.run('UPDATE prizes SET remaining_count = remaining_count - 1 WHERE id = ?', [picked.id], (err) => {
+          if (err) {
+            return res.status(500).json({ error: err.message });
+          }
+
+          // Decrement remaining boxes
+          db.run('UPDATE raffles SET remaining_boxes = remaining_boxes - 1 WHERE id = ?', [raffleId], (err) => {
+            if (err) {
+              return res.status(500).json({ error: err.message });
+            }
+
+            // Check if all boxes gone - close raffle
+            const newRemaining = raffle.remaining_boxes - 1;
+            if (newRemaining <= 0) {
+              db.run('UPDATE raffles SET status = "completed" WHERE id = ?', [raffleId]);
+            }
+
+            res.json({
+              success: true,
+              entry_id: this.lastID,
+              prize: {
+                id: picked.id,
+                tier: picked.tier,
+                name: picked.name,
+                is_final: picked.is_final === 1,
+                pool_number: picked.pool_number
+              },
+              remaining_boxes: newRemaining
+            });
+          });
+        });
+      });
+    });
   });
 });
 
 // Get raffle results
 app.get('/api/raffles/:id/results', (req, res) => {
   const raffleId = req.params.id;
-  const raffle = db.prepare('SELECT * FROM raffles WHERE id = ?').get(raffleId);
-  
-  if (!raffle) {
-    return res.status(404).json({ error: 'Raffle not found' });
-  }
-  
-  if (raffle.status === 'active') {
-    return res.status(400).json({ error: 'Results not available yet' });
-  }
-  
-  const winners = db.prepare(`
-    SELECT w.id, e.name, e.contact, w.prize, w.drawn_at
-    FROM winners w
-    JOIN entries e ON w.entry_id = e.id
-    WHERE w.raffle_id = ?
-    ORDER BY w.id
-  `).all(raffleId);
-  
-  const totalEntries = db.prepare('SELECT COUNT(*) as count FROM entries WHERE raffle_id = ?').get(raffleId).count;
-  
-  res.json({
-    raffle,
-    winners,
-    total_entries: totalEntries
+  db.get('SELECT * FROM raffles WHERE id = ?', [raffleId], (err, raffle) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (!raffle) {
+      return res.status(404).json({ error: 'Raffle not found' });
+    }
+
+    if (raffle.status === 'active') {
+      return res.status(400).json({ error: 'Results not available yet' });
+    }
+
+    // Get all entries with prizes
+    db.all(`
+      SELECT e.id, e.name, e.contact, p.tier, p.name as prize_name, p.is_final, e.created_at
+      FROM entries e
+      LEFT JOIN prizes p ON e.won_prize_id = p.id
+      WHERE e.raffle_id = ?
+      ORDER BY e.created_at
+    `, [raffleId], (err, entries) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      db.get('SELECT COUNT(*) as total FROM entries WHERE raffle_id = ?', [raffleId], (err, row) => {
+        res.json({
+          raffle,
+          entries,
+          total_entries: row.count
+        });
+      });
+    });
   });
 });
 
 // Admin: get all raffles
 app.get('/api/admin/raffles', requireAdmin, (req, res) => {
-  const raffles = db.prepare(`
-    SELECT id, title, description, prize, status, start_date, end_date, created_at
+  db.all(`
+    SELECT id, title, description, type, total_boxes, remaining_boxes, status, start_date, end_date, created_at
     FROM raffles 
     ORDER BY created_at DESC
-  `).all();
-  
-  const stats = raffles.map(r => {
-    const count = db.prepare('SELECT COUNT(*) as count FROM entries WHERE raffle_id = ?').get(r.id).count;
-    return { ...r, entry_count: count };
+  `, [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    const result = rows.map(r => {
+      return new Promise((resolve) => {
+        db.get('SELECT COUNT(*) as count FROM entries WHERE raffle_id = ?', [r.id], (err, row) => {
+          if (err) {
+            resolve({ ...r, entry_count: 0 });
+          } else {
+            resolve({ ...r, entry_count: row.count });
+          }
+        });
+      });
+    });
+
+    Promise.all(result).then(rows => {
+      res.json({ raffles: rows });
+    });
   });
-  
-  res.json({ raffles: stats });
 });
 
 // Admin: create raffle
 app.post('/api/admin/raffles/create', requireAdmin, (req, res) => {
   const { title, description, type = 'single', total_boxes, prizes } = req.body;
-  
+
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
 
-  if (type === 'single') {
+  // Traditional single prize raffle
+  if (type !== 'ichiban') {
     const { prize, start_date, end_date } = req.body;
     if (!prize || !end_date) {
       return res.status(400).json({ error: 'Prize and end date are required' });
     }
-  
-    const info = db.prepare(`
-      INSERT INTO raffles (title, description, type, prize, total_boxes, start_date, end_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title, description, type, prize, total_boxes, start_date, end_date, req.admin.id);
-    
-    return res.json({ success: true, id: info.lastInsertRowid });
+
+    db.run(`
+      INSERT INTO raffles (title, description, type, total_boxes, remaining_boxes, start_date, end_date, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [title, description, type, total_boxes, total_boxes, start_date, end_date, req.admin.id], function(err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ success: true, id: this.lastID });
+    });
+    return;
   }
 
   // Ichiban Kuji creation
-  if (type === 'ichiban') {
-    if (!total_boxes || !prizes || !Array.isArray(prizes) || prizes.length === 0) {
-      return res.status(400).json({ error: 'Total boxes and prizes array are required' });
+  if (!total_boxes || !prizes || !Array.isArray(prizes) || prizes.length === 0) {
+    return res.status(400).json({ error: 'Total boxes and prizes array are required' });
+  }
+
+  // Insert raffle first
+  db.run(`
+    INSERT INTO raffles (title, description, type, total_boxes, remaining_boxes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, [title, description, type, total_boxes, total_boxes, req.admin.id], function(err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
     }
 
-    // Insert raffle
-    const info = db.prepare(`
-      INSERT INTO raffles (title, description, type, total_boxes, remaining_boxes, start_date, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title, description, type, total_boxes, total_boxes, new Date().toISOString(), req.admin.id);
-
-    const raffleId = info.lastInsertid;
+    const raffleId = this.lastID;
 
     // Insert all prizes
-    const insertPrize = db.prepare(`
-      INSERT INTO prizes (raffle_id, tier, name, total_count, remaining_count, is_final, pool_number)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
+    let inserted = 0;
     for (const prize of prizes) {
-      insertPrize.run(
-        raffleId, 
-        prize.tier || 'A', 
-        prize.name, 
-        prize.count, 
-        prize.count, 
+      db.run(`
+        INSERT INTO prizes (raffle_id, tier, name, total_count, remaining_count, is_final, pool_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+        raffleId,
+        prize.tier || 'A',
+        prize.name,
+        prize.count,
+        prize.count,
         prize.is_final ? 1 : 0,
         prize.pool_number || null
-      );
+      ], (err) => {
+        if (!err) inserted++;
+      });
     }
 
-    return res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       id: raffleId,
       total_boxes,
-      total_prizes: prizes.length
+      total_prizes: inserted
     });
-  }
+  });
 });
 
-// Admin: draw winners
+// Admin: draw winners (for traditional raffle)
 app.post('/api/admin/raffles/:id/draw', requireAdmin, (req, res) => {
   const { number_of_winners = 1 } = req.body;
   const raffleId = req.params.id;
-  
-  const raffle = db.prepare('SELECT * FROM raffles WHERE id = ?').get(raffleId);
-  if (!raffle) {
-    return res.status(404).json({ error: 'Raffle not found' });
-  }
-  
-  const entries = db.prepare('SELECT * FROM entries WHERE raffle_id = ?').all(raffleId);
-  if (entries.length === 0) {
-    return res.status(400).json({ error: 'No entries to draw from' });
-  }
-  
-  // Shuffle and pick winners (Fisher-Yates shuffle)
-  const shuffled = [...entries];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  
-  const winners = shuffled.slice(0, Math.min(number_of_winners, shuffled.length));
-  
-  // Save winners
-  const insertWinner = db.prepare('INSERT INTO winners (raffle_id, entry_id, prize) VALUES (?, ?, ?)');
-  for (const winner of winners) {
-    insertWinner.run(raffleId, winner.id, raffle.prize);
-  }
-  
-  // Mark raffle as drawn
-  db.prepare('UPDATE raffles SET status = "completed", drawn_at = CURRENT_TIMESTAMP WHERE id = ?').run(raffleId);
-  
-  res.json({
-    success: true,
-    winners: winners.map(w => ({ id: w.id, name: w.name }))
+
+  db.get('SELECT * FROM raffles WHERE id = ?', [raffleId], (err, raffle) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (!raffle) {
+      return res.status(404).json({ error: 'Raffle not found' });
+    }
+
+    db.all('SELECT * FROM entries WHERE raffle_id = ?', [raffleId], (err, entries) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      if (entries.length === 0) {
+        return res.status(400).json({ error: 'No entries to draw from' });
+      }
+
+      // Shuffle and pick winners (Fisher-Yates)
+      const shuffled = [...entries];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      const winners = shuffled.slice(0, Math.min(number_of_winners, shuffled.length));
+
+      // Save winners
+      let saved = 0;
+      for (const winner of winners) {
+        db.run(`
+          INSERT INTO winners (raffle_id, entry_id, prize_id)
+            VALUES (?, ?, ?)
+        `, [raffleId, winner.id, winner.won_prize_id], (err) => {
+          if (!err) saved++;
+        });
+      }
+
+      // Mark raffle as completed
+      db.run('UPDATE raffles SET status = "completed", drawn_at = CURRENT_TIMESTAMP WHERE id = ?', [raffleId], (err) => {
+        if (err) {
+          return res.status(500).json({ error: err.message });
+        }
+        res.json({
+          success: true,
+          total_winners: saved,
+          winners: winners.map(w => ({
+            id: w.id,
+            name: w.name,
+            contact: w.contact
+          }))
+        });
+      });
+    });
   });
 });
 
 // Start server
 app.listen(port, () => {
   console.log(`🎫 Raffle website running on http://localhost:${port}`);
-  console.log(`🔐 Admin default: /public/admin.html - user: admin / password: ${process.env.DEFAULT_ADMIN_PASSWORD || 'admin123'}`);
+  console.log(`🔐 Admin default: admin / ${process.env.DEFAULT_ADMIN_PASSWORD || 'admin123'}`);
 });
