@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>一番賞線上抽獎 - Ichiban Kuji Raffle</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>一番賞線上抽獎</h1>
+      <p>公平公開，即抽即中</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <h2>進行中的抽獎活動</h2>
+    
+    <% if (raffles.length === 0) { %>
+      <div class="empty-state">
+        <p>目前沒有進行中的抽獎活動</p>
+      </div>
+    <% } else { %>
+      <div class="raffle-list">
+        <% raffles.forEach(raffle => { %>
+          <div class="raffle-card">
+            <h3><%= raffle.title %></h3>
+            <p><%= raffle.description %></p>
+            <div class="raffle-stats">
+              <span class="stat">
+                <strong>價格</strong>: HK$<%= raffle.price_per_box %>
+              </span>
+              <span class="stat">
+                <strong>剩餘</strong>: <%= raffle.remaining_boxes %> / <%= raffle.total_boxes %>
+              </span>
+            </div>
+            <a href="/raffle/<%= raffle.id %>" class="btn btn-primary">立即抽獎</a>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; <%= new Date().getFullYear() %> Ichiban Kuji Raffle System</p>
+    </div>
+  </footer>
+</body>
+</html>

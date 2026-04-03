@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>建立新抽獎 - 管理後台</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+    <a href="/admin" class="back-link">← 返回後台</a>
+    <h1>建立新一番賞抽獎</h1>
+  </header>
+
+  <main class="container">
+    <div class="wizard">
+      <!-- Step 1: Basic Info -->
+      <div class="wizard-step active" id="step1">
+        <h2>基本資訊</h2>
+        <form id="basicInfoForm" class="form-card">
+          <div class="form-group">
+            <label for="title">抽獎標題</label>
+            <input type="text" id="title" name="title" required placeholder="例如: 海賊王一番賞">
+          </div>
+          <div class="form-group">
+            <label for="description">描述</label>
+            <textarea id="description" name="description" rows="3" placeholder="簡單描述這個抽獎活動"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="total_boxes">總盒數</label>
+              <input type="number" id="total_boxes" name="total_boxes" min="1" required placeholder="80">
+            </div>
+            <div class="form-group">
+              <label for="price_per_box">每盒價格 (HK$)</label>
+              <input type="number" id="price_per_box" name="price_per_box" step="0.1" required placeholder="100">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="num_pools">獎池數量 (分池最終賞)</label>
+              <input type="number" id="num_pools" name="num_pools" min="1" value="1">
+              <small>如果不分池請留 1</small>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-large">下一步: 新增獎品</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Step 2: Add Prizes -->
+      <div class="wizard-step" id="step2">
+        <h2>新增獎品</h2>
+        <div class="prize-management">
+          <div class="current-prizes">
+          <h3>已新增獎品 (<span id="prizeCount">0</span>)</h3>
+          <div id="prizeList" class="prize-list-admin">
+            <div class="empty-state">
+              <p>尚無獎品，請在右側新增</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="add-prize-form">
+          <h3>新增獎品</h3>
+          <form id="addPrizeForm" class="form-card">
+            <div class="form-group">
+              <label for="tier">獎級</label>
+              <select id="tier" name="tier" required>
+                <option value="A">A賞</option>
+                <option value="B">B賞</option>
+                <option value="C">C賞</option>
+                <option value="D">D賞</option>
+                <option value="E">E賞</option>
+                <option value="F">F賞</option>
+                <option value="G">G賞</option>
+                <option value="H">H賞</option>
+                <option value="LAST">LAST賞</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="prize_name">獎品名稱</label>
+              <input type="text" id="prize_name" name="prize_name" required placeholder="例如: 路飛手辦">
+            </div>
+            <div class="form-group">
+              <label for="prize_description">描述 (可選)</label>
+              <textarea id="prize_description" name="prize_description" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="image_url">圖片網址 (可選)</label>
+              <input type="url" id="image_url" name="image_url">
+            </div>
+            <div class="form-group">
+              <label for="total_count">數量</label>
+              <input type="number" id="total_count" name="total_count" min="1" required value="1">
+            </div>
+            <div class="form-group checkbox">
+              <label>
+                <input type="checkbox" id="is_final" name="is_final">
+                這是最終賞
+              </label>
+            </div>
+            <div class="form-group" id="poolNumberGroup" style="display: none;">
+              <label for="pool_number">獎池編號</label>
+              <input type="number" id="pool_number" name="pool_number" min="1" value="1">
+              <small>最終賞屬於哪個獎池</small>
+            </div>
+            <div class="form-actions">
+              <button type="button" id="addPrizeBtn" class="btn btn-primary">新增此獎品</button>
+            </div>
+          </form>
+        </div>
+        </div>
+
+        <div class="form-actions final-actions">
+          <button type="button" id="backToStep1" class="btn btn-secondary">上一步</button>
+          <button type="button" id="finishBtn" class="btn btn-success btn-large" disabled>完成建立</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Admin Dashboard - Ichiban Kuji Raffle System</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initCreateRafflePage();
+    });
+  </script>
+</body>
+</html>

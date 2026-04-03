@@ -1,18 +1,14 @@
 {
-  "name": "raffle-site",
+  "name": "ichiban-kuji-raffle",
   "version": "1.0.0",
-  "description": "Simple online raffle website",
+  "description": "Ichiban Kuji Online Raffle System - 一番賞線上抽獎系統",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "node app.js"
   },
-  "keywords": [
-    "raffle",
-    "giveaway",
-    "lottery"
-  ],
-  "author": "",
+  "keywords": ["raffle", "ichiban-kuji", "lottery", "giveaway"],
+  "author": "Felix Chan",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理後台 - 一番賞線上抽獎</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>管理後台</h1>
+      <p>Ichiban Kuji Admin Dashboard</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="admin-header">
+      <h2>抽獎活動列表</h2>
+      <a href="/admin/create" class="btn btn-primary">建立新抽獎</a>
+    </div>
+
+    <% if (raffles.length === 0) { %>
+      <div class="empty-state">
+        <p>尚無任何抽獎活動</p>
+        <a href="/admin/create" class="btn btn-primary">建立第一個抽獎</a>
+      </div>
+    <% } else { %>
+      <div class="admin-table-wrapper">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>標題</th>
+              <th>狀態</th>
+              <th>盒子</th>
+              <th>價格</th>
+              <th>建立時間</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% raffles.forEach(raffle => { %>
+              <tr>
+                <td><%= raffle.id %></td>
+                <td><%= raffle.title %></td>
+                <td>
+                  <span class="status-badge <%= raffle.status %>">
+                    <% if (raffle.status === 'active') { %>
+                      進行中
+                    <% } else if (raffle.status === 'closed') { %>
+                      已關閉
+                    <% } else if (raffle.status === 'completed') { %>
+                      已完成
+                    <% } %>
+                  </span>
+                </td>
+                <td><%= raffle.remaining_boxes %> / <%= raffle.total_boxes %></td>
+                <td>HK$<%= raffle.price_per_box %></td>
+                <td><%= new Date(raffle.created_at).toLocaleString('zh-HK') %></td>
+                <td class="actions">
+                  <a href="/raffle/<%= raffle.id %>" target="_blank" class="btn btn-sm btn-secondary">查看</a>
+                  <% if (raffle.status === 'active') { %>
+                    <button class="btn btn-sm btn-warning change-status" 
+                            data-id="<%= raffle.id %>" 
+                            data-status="closed">關閉</button>
+                  <% } else if (raffle.status === 'closed') { %>
+                    <button class="btn btn-sm btn-success change-status"
+                            data-id="<%= raffle.id %>"
+                            data-status="active">開啟</button>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>Admin Dashboard - Ichiban Kuji Raffle System</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initAdminDashboard();
+    });
+  </script>
+</body>
+</html>

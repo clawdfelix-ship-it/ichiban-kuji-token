@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= raffle.title %> - 一番賞線上抽獎</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="container">
+      <a href="/" class="back-link">← 返回首頁</a>
+      <h1><%= raffle.title %></h1>
+      <p><%= raffle.description %></p>
+      <div class="raffle-header-stats">
+        <span class="stat-badge">
+          <strong>剩餘</strong>: <%= remainingCount %> / <%= raffle.total_boxes %>
+        </span>
+        <span class="stat-badge price">
+          <strong>價格</strong>: HK$<%= raffle.price_per_box %>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <% if (remainingCount <= 0) { %>
+      <div class="alert warning">
+        <strong>此抽獎活動已完結</strong>，所有盒子已被抽完。
+      </div>
+    <% } %>
+
+    <!-- Entry Form -->
+    <% if (remainingCount > 0 && raffle.status === 'active') { %>
+      <section class="entry-section">
+        <h2>參加抽獎</h2>
+        <form id="drawForm" class="draw-form">
+          <div class="form-group">
+            <label for="name">姓名</label>
+            <input type="text" id="name" name="name" required placeholder="請輸入你的姓名">
+          </div>
+          <div class="form-group">
+            <label for="contact">聯絡方式</label>
+            <input type="text" id="contact" name="contact" required placeholder="請輸入電話或WhatsApp">
+          </div>
+          <button type="submit" id="drawBtn" class="btn btn-primary btn-large">開始抽獎!</button>
+        </form>
+      </section>
+
+      <!-- Result Modal -->
+      <div id="resultModal" class="modal hidden">
+        <div class="modal-content">
+          <h2>抽獎結果</h2>
+          <div id="resultContent" class="result-content">
+            <!-- Filled by JS -->
+          </div>
+          <button id="closeResult" class="btn btn-secondary">關閉</button>
+        </div>
+      </div>
+    <% } %>
+
+    <!-- Prize List by Pool -->
+    <section class="prize-section">
+      <h2>獎品列表</h2>
+      <% pools.forEach(pool => { %>
+        <% if (pools.length > 1) { %>
+          <h3 class="pool-title">第 <%= pool.number %> 獎池</h3>
+        <% } %>
+        <div class="prize-list">
+          <% pool.prizes.forEach(prize => { %>
+            <div class="prize-card <%= prize.is_final ? 'final-prize' : '' %> <%= prize.remaining_count <= 0 ? 'sold-out' : '' %>">
+              <div class="prize-header">
+                <span class="tier-badge <%= prize.tier.toLowerCase() %>"><%= prize.tier %></span>
+                <% if (prize.is_final) { %>
+                  <span class="final-badge">最終賞</span>
+                <% } %>
+                <span class="count-badge">
+                  <%= prize.remaining_count %> / <%= prize.total_count %>
+                </span>
+              </div>
+              <h3 class="prize-name"><%= prize.name %></h3>
+              <% if (prize.description) { %>
+                <p class="prize-description"><%= prize.description %></p>
+              <% } %>
+              <% if (prize.remaining_count <= 0) { %>
+                <div class="sold-out-overlay">已抽完</div>
+              <% } %>
+            </div>
+          <% }) %>
+        </div>
+      <% }) %>
+    </section>
+
+    <!-- Winner List -->
+    <section class="winner-section">
+      <h2>中獎記錄</h2>
+      <% if (winners.length === 0) { %>
+        <div class="empty-state">
+          <p>暫無中獎記錄</p>
+        </div>
+      <% } else { %>
+        <div class="winner-list">
+          <table class="winner-table">
+            <thead>
+              <tr>
+                <th>中獎者</th>
+                <th>獎品</th>
+                <th>時間</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% winners.forEach(winner => { %>
+                <tr>
+                  <td><%= winner.buyer_name %></td>
+                  <td><%= winner.prize_name %></td>
+                  <td><%= new Date(winner.drawn_at).toLocaleString('zh-HK') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; <%= new Date().getFullYear() %> Ichiban Kuji Raffle System</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initRafflePage(<%= raffle.id %>);
+    });
+  </script>
+</body>
+</html>
