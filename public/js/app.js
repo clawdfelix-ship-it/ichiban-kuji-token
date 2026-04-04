@@ -236,7 +236,7 @@ function initCodesModal() {
           <tr>
             <td><code class="code-text">${code.code}</code></td>
             <td><span class="status-badge ${statusClass}">${status}</span></td>
-            <td>${new Date(code.created_at).toLocaleString('zh-HK')}</td>
+            <td>${new Date(code.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</td>
           </tr>
         `;
       });
@@ -555,7 +555,7 @@ function initAdminUsersPage() {
           <td>${u.entries_count || 0}</td>
           <td>${u.codes_assigned_count || 0}</td>
           <td>${u.codes_used_count || 0}</td>
-          <td>${u.created_at ? new Date(u.created_at).toLocaleString('zh-HK') : ''}</td>
+          <td>${u.created_at ? new Date(u.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) : ''}</td>
           <td class="actions">
             <button class="btn btn-sm btn-warning" data-action="reset" data-id="${u.id}" data-username="${u.username || ''}">重置密碼</button>
           </td>

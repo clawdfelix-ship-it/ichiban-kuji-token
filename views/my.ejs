@@ -62,7 +62,7 @@
             <div class="winning-card ${entry.prize_is_final ? 'final' : ''}">
               <div class="my-entry-header">
                 <strong>${entry.raffle_title}</strong>
-                <span class="date">${new Date(entry.drawn_at).toLocaleString('zh-HK')}</span>
+                <span class="date">${new Date(entry.drawn_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</span>
               </div>
               <div class="my-entry-prize">
                 ${entry.prize_tier ? `<span class="tier-badge ${entry.prize_tier.toLowerCase()}">${entry.prize_tier}</span>` : ''}

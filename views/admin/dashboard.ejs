@@ -68,7 +68,7 @@
                 </td>
                 <td><%= raffle.remaining_boxes %> / <%= raffle.total_boxes %></td>
                 <td>HK$<%= formatMoney(raffle.price_per_box) %> / NT$<%= formatMoney(raffle.price_per_box * twdPerHkd, 0) %></td>
-                <td><%= new Date(raffle.created_at).toLocaleString('zh-HK') %></td>
+                <td><%= new Date(raffle.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) %></td>
                 <td class="actions">
                   <a href="/raffle/<%= raffle.id %>" target="_blank" class="btn btn-sm btn-secondary">查看</a>
                   <a href="/admin/raffles/<%= raffle.id %>/codes" class="btn btn-sm btn-primary">驗證碼</a>

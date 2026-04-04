@@ -96,7 +96,7 @@
               <td>${c.assigned_username || '-'}</td>
               <td>${c.used_username || '-'}</td>
               <td><span class="status-badge ${statusClass}">${status}</span></td>
-              <td>${new Date(c.created_at).toLocaleString('zh-HK')}</td>
+              <td>${new Date(c.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}</td>
             </tr>
           `;
         });

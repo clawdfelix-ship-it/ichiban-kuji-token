@@ -131,7 +131,7 @@
                 <tr>
                   <td data-label="中獎者"><%= winner.buyer_name %></td>
                   <td data-label="獎品"><%= winner.prize_name %></td>
-                  <td data-label="時間"><%= new Date(winner.drawn_at).toLocaleString('zh-HK') %></td>
+                  <td data-label="時間"><%= new Date(winner.drawn_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) %></td>
                 </tr>
               <% }) %>
             </tbody>
