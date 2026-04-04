@@ -110,7 +110,7 @@ header p {
   max-width: 240px;
   object-fit: contain;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.1);
+  background: #ffffff;
   padding: 6px 10px;
   box-shadow: var(--shadow-sm);
 }
