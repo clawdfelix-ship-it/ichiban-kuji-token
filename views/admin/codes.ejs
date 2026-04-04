@@ -129,7 +129,7 @@
       copyAllBtn.addEventListener('click', async () => {
         try {
           const result = await apiRequest(`/api/admin/raffles/${raffleId}/codes`);
-          const codes = (result.codes || []).map(c => c.code).join('\\n');
+          const codes = (result.codes || []).map(c => c.code).join('|');
           await navigator.clipboard.writeText(codes);
           alert('全部驗證碼已複製到剪貼板');
         } catch (err) {
