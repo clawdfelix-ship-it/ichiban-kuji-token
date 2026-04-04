@@ -122,9 +122,9 @@
             <tbody>
               <% winners.forEach(winner => { %>
                 <tr>
-                  <td><%= winner.buyer_name %></td>
-                  <td><%= winner.prize_name %></td>
-                  <td><%= new Date(winner.drawn_at).toLocaleString('zh-HK') %></td>
+                  <td data-label="中獎者"><%= winner.buyer_name %></td>
+                  <td data-label="獎品"><%= winner.prize_name %></td>
+                  <td data-label="時間"><%= new Date(winner.drawn_at).toLocaleString('zh-HK') %></td>
                 </tr>
               <% }) %>
             </tbody>
