@@ -41,39 +41,40 @@
     document.addEventListener('DOMContentLoaded', async () => {
       console.log('=== Ichiban Kuji - My Page Load ===');
       
-      // Check if user is logged in
-      const userJson = localStorage.getItem('ikr_user');
-      console.log('localStorage userJson:', userJson);
+      // Get userId from URL query (fallback) or localStorage
+      let userId = null;
       
-      if (!userJson) {
-        console.log('No user found in localStorage, show login required');
-        document.getElementById('loginRequired').classList.remove('hidden');
-        return;
+      // Try URL first - this works even if localStorage is blocked
+      const urlParams = new URLSearchParams(window.location.search);
+      userId = urlParams.get('userId');
+      
+      // If no userId in URL, try localStorage
+      if (!userId) {
+        const userJson = localStorage.getItem('ikr_user');
+        if (userJson) {
+          try {
+            const user = JSON.parse(userJson);
+            userId = user.id;
+            console.log('Got userId from localStorage:', userId);
+          } catch (e) {
+            console.error('Invalid user in localStorage', e);
+            localStorage.removeItem('ikr_user');
+          }
+        }
+      } else {
+        console.log('Got userId from URL:', userId);
       }
 
-      let user;
-      try {
-        user = JSON.parse(userJson);
-        console.log('Parsed user:', user);
-      } catch (e) {
-        console.error('Invalid user JSON:', e);
-        localStorage.removeItem('ikr_user');
-        document.getElementById('loginRequired').classList.remove('hidden');
-        return;
-      }
-
-      if (!user.id) {
-        console.error('User has no id:', user);
-        localStorage.removeItem('ikr_user');
+      if (!userId) {
+        console.log('No userId found, show login required');
         document.getElementById('loginRequired').classList.remove('hidden');
         return;
       }
 
       document.getElementById('myContent').classList.remove('hidden');
-      console.log('User authenticated, user id:', user.id);
 
       try {
-        const url = `/api/my/entries?userId=${user.id}`;
+        const url = `/api/my/entries?userId=${userId}`;
         console.log('Fetching entries from:', url);
         
         const result = await apiRequest(url);
@@ -107,7 +108,7 @@
         listEl.innerHTML = html;
       } catch (err) {
         console.error('Failed to load entries', err);
-        alert('獲取抽獎記錄失敗: ' + err.message + '\n\n' + JSON.stringify(err));
+        alert('獲取抽獎記錄失敗: ' + err.message);
       }
     });
   </script>
