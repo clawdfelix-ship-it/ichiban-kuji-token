@@ -180,16 +180,39 @@ async function initDatabase() {
 
     const adminResult = await dbQuery('SELECT COUNT(*) as count FROM users WHERE is_admin = 1');
     const hasAdmin = adminResult.rows[0]?.count !== '0';
-    const seedAdminUsername = process.env.SEED_ADMIN_USERNAME;
-    const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD;
 
-    if (!hasAdmin && seedAdminUsername && seedAdminPassword) {
-      const passwordHash = await bcrypt.hash(seedAdminPassword, 10);
-      await dbQuery(
-        'INSERT INTO users (username, password_hash, contact, is_admin) VALUES ($1, $2, $3, $4)',
-        [seedAdminUsername, passwordHash, null, 1]
-      );
-      console.log('Admin user seeded from environment variables.');
+    const seedAdminUsername =
+      process.env.SEED_ADMIN_USERNAME ||
+      process.env.ADMIN_LOGIN ||
+      process.env.ADMIN_USERNAME;
+    const seedAdminPassword =
+      process.env.SEED_ADMIN_PASSWORD ||
+      process.env.ADMIN_PASSWORD;
+    const allowReset =
+      process.env.SEED_ADMIN_RESET === '1' ||
+      process.env.RESET_ADMIN_PASSWORD === '1';
+
+    if (seedAdminUsername && seedAdminPassword) {
+      const existingUserResult = await dbQuery('SELECT id, is_admin FROM users WHERE username = $1 LIMIT 1', [
+        seedAdminUsername
+      ]);
+      const exists = existingUserResult.rows.length > 0;
+
+      if (!exists) {
+        const passwordHash = await bcrypt.hash(seedAdminPassword, 10);
+        await dbQuery(
+          'INSERT INTO users (username, password_hash, contact, is_admin) VALUES ($1, $2, $3, $4)',
+          [seedAdminUsername, passwordHash, null, 1]
+        );
+        console.log('Admin user seeded from environment variables.');
+      } else if (allowReset || !hasAdmin) {
+        const passwordHash = await bcrypt.hash(seedAdminPassword, 10);
+        await dbQuery('UPDATE users SET password_hash = $1, is_admin = 1 WHERE username = $2', [
+          passwordHash,
+          seedAdminUsername
+        ]);
+        console.log('Admin user password updated from environment variables.');
+      }
     }
 
     console.log('Database initialized');
