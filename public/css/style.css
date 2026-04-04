@@ -1179,3 +1179,12 @@ section {
     --border-color: #bdbdbd;
   }
 }
+/* Fix for hiding login required/my content */
+#loginRequired.hidden,
+#myContent.hidden {
+  display: none !important;
+}
+
+.hidden {
+  display: none;
+}
