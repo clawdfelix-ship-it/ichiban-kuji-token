@@ -523,11 +523,17 @@ header .btn-outline:hover {
 
 .raffle-header-cover {
   width: 100%;
-  max-height: 240px;
+  height: 240px;
   object-fit: cover;
   border-radius: var(--border-radius);
   margin: 10px 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 768px) {
+  .raffle-header-cover {
+    height: 180px;
+  }
 }
 
 .raffle-card {
