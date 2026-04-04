@@ -1007,6 +1007,10 @@ app.post('/api/admin/raffles/:id/generate-codes', async (req, res) => {
     if (!req.session.user || !req.session.user.is_admin) {
       return res.status(403).json({ error: '需要管理員權限' });
     }
+
+    if (!raffleId) {
+      return res.status(400).json({ error: '抽獎活動ID無效' });
+    }
     
     if (!numCount || numCount < 1) {
       return res.status(400).json({ error: '請輸入正確數量' });
@@ -1022,6 +1026,14 @@ app.post('/api/admin/raffles/:id/generate-codes', async (req, res) => {
         return res.status(400).json({ error: '找不到此會員用戶名' });
       }
       assignedUserId = userResult.rows[0].id;
+    }
+
+    try {
+      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_user_id INTEGER NULL');
+      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP NULL');
+      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_by INTEGER NULL');
+    } catch (schemaErr) {
+      console.error('Schema ensure failed (verification_codes):', schemaErr);
     }
     
     const codes = [];
@@ -1047,8 +1059,10 @@ app.post('/api/admin/raffles/:id/generate-codes', async (req, res) => {
       count: codes.length
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Generate codes error:', err);
+    const msg = err && err.message ? err.message : 'Unknown error';
+    const code = err && err.code ? err.code : null;
+    res.status(500).json({ error: `Server error: ${msg}${code ? ` (${code})` : ''}` });
   }
 });
 
