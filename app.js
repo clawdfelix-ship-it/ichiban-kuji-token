@@ -431,7 +431,9 @@ app.get('/raffle/:id', async (req, res) => {
     
     // Get recent winners
     const winnersResult = await dbQuery(`
-      SELECT w.*, p.name as prize_name, p.tier as prize_tier
+      SELECT w.*, 
+             CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
+             p.tier as prize_tier
       FROM winners w
       JOIN prizes p ON w.prize_id = p.id
       WHERE w.raffle_id = $1
@@ -473,7 +475,9 @@ app.get('/api/raffle/:id/prizes', async (req, res) => {
 app.get('/api/raffle/:id/winners', async (req, res) => {
   try {
     const result = await dbQuery(`
-      SELECT w.*, p.name as prize_name, p.tier as prize_tier
+      SELECT w.*, 
+             CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
+             p.tier as prize_tier
       FROM winners w
       JOIN prizes p ON w.prize_id = p.id
       WHERE w.raffle_id = $1
@@ -661,10 +665,13 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
 
     await client.query('COMMIT');
 
+    const majorTiers = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+    const displayPrizeName = majorTiers.has(updatedPrize.tier) ? updatedPrize.name : '親筆簽名拍立得一張';
+
     res.json({
       success: true,
       entryId,
-      prize: updatedPrize,
+      prize: { ...updatedPrize, name: displayPrizeName },
       remaining_boxes: remainingBoxes
     });
   } catch (err) {
@@ -1194,7 +1201,11 @@ app.get('/api/my/entries', async (req, res) => {
     const userId = req.session.user.id;
     
     const result = await dbQuery(`
-      SELECT e.*, r.title as raffle_title, p.name as prize_name, p.tier as prize_tier, p.is_final as prize_is_final
+      SELECT e.*, 
+             r.title as raffle_title, 
+             CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
+             p.tier as prize_tier, 
+             p.is_final as prize_is_final
       FROM entries e
       JOIN raffles r ON e.raffle_id = r.id
       LEFT JOIN prizes p ON e.prize_id = p.id
