@@ -53,12 +53,9 @@
             <label for="verification_code">驗證碼</label>
             <input type="text" id="verification_code" name="verification_code" required placeholder="請輸入管理員俾你的驗證碼">
           </div>
-          <% 
-          // Get current user from localStorage via JS
-          %>
           <div class="form-group">
             <label for="username">會員用戶名</label>
-            <input type="text" id="username" name="username" required placeholder="請輸入你的會員用戶名">
+            <input type="text" id="username" name="username" required placeholder="請輸入你的會員用戶名" value="<%= currentUser ? currentUser.username : '' %>" <%= currentUser ? 'readonly' : '' %>>
           </div>
           <div class="form-group">
             <label for="contact">聯絡方式</label>

@@ -509,9 +509,11 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
 
     const codeResult = await dbQuery(
       `
-        SELECT * FROM verification_codes
-        WHERE code = $1 AND raffle_id = $2 AND used = false
-        FOR UPDATE
+        SELECT vc.*, au.username as assigned_username
+        FROM verification_codes vc
+        LEFT JOIN users au ON vc.assigned_user_id = au.id
+        WHERE vc.code = $1 AND vc.raffle_id = $2 AND vc.used = false
+        FOR UPDATE OF vc
       `,
       [code, raffleId],
       client
@@ -525,13 +527,17 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
     if (verificationCode.assigned_user_id) {
       if (!req.session.user) {
         await client.query('ROLLBACK');
-        return res.status(401).json({ error: '此驗證碼已分配給會員，請登入後再抽獎' });
+        return res.status(401).json({ error: '此驗證碼已分配給會員，請用會員登入後再抽獎' });
       }
       if (Number(req.session.user.id) !== Number(verificationCode.assigned_user_id)) {
         await client.query('ROLLBACK');
-        return res.status(403).json({ error: '此驗證碼已分配給其他會員' });
+        const assignedUsername = verificationCode.assigned_username || '指定會員';
+        const currentUsername = req.session.user.username || String(req.session.user.id);
+        return res.status(403).json({ error: `此驗證碼已分配給會員 ${assignedUsername}，你而家登入緊 ${currentUsername}` });
       }
     }
+
+    const effectiveUsername = req.session.user?.username || username;
 
     const raffleResult = await dbQuery('SELECT * FROM raffles WHERE id = $1 FOR UPDATE', [raffleId], client);
     if (raffleResult.rows.length === 0) {
@@ -639,7 +645,7 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
       `,
-      [raffleId, updatedPrize.id, username, contact, userId, verificationCode.id],
+      [raffleId, updatedPrize.id, effectiveUsername, contact, userId, verificationCode.id],
       client
     );
     const entryId = entryResult.rows[0].id;
@@ -649,7 +655,7 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
         INSERT INTO winners (entry_id, raffle_id, prize_id, buyer_name, user_id)
         VALUES ($1, $2, $3, $4, $5)
       `,
-      [entryId, raffleId, updatedPrize.id, username, userId],
+      [entryId, raffleId, updatedPrize.id, effectiveUsername, userId],
       client
     );
 
