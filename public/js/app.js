@@ -101,6 +101,154 @@ function initRafflePage(raffleId) {
       }
     });
   }
+
+  // Batch mode toggle
+  const batchToggle = document.getElementById('batchModeToggle');
+  const singleForm = document.getElementById('drawForm');
+  const batchForm = document.getElementById('batchDrawForm');
+  const batchResultsArea = document.getElementById('batchResultsArea');
+  const batchResultsContent = document.getElementById('batchResultsContent');
+  const batchCountSpan = document.getElementById('batchCount');
+  const batchTextarea = document.getElementById('batch_codes');
+
+  if (batchToggle) {
+    batchToggle.addEventListener('change', () => {
+      if (batchToggle.checked) {
+        singleForm.style.display = 'none';
+        batchForm.style.display = 'block';
+        batchResultsArea.style.display = 'block';
+      } else {
+        singleForm.style.display = 'block';
+        batchForm.style.display = 'none';
+        batchResultsArea.style.display = 'none';
+      }
+    });
+  }
+
+  // Update batch count when text changes
+  if (batchTextarea) {
+    batchTextarea.addEventListener('input', () => {
+      const text = batchTextarea.value.trim();
+      if (!text) {
+        batchCountSpan.textContent = '0';
+        return;
+      }
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      batchCountSpan.textContent = String(lines.length);
+    });
+  }
+
+  // Batch draw form submit
+  if (batchForm) {
+    batchForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const text = document.getElementById('batch_codes').value.trim();
+      const username = document.getElementById('batch_username').value.trim();
+      const contact = document.getElementById('batch_contact').value.trim();
+      const drawBtn = document.getElementById('batchDrawBtn');
+
+      if (!text) {
+        alert('請輸入驗證碼');
+        return;
+      }
+      if (!username || !contact) {
+        alert('請填寫會員用戶名和聯絡方式');
+        return;
+      }
+
+      // 支援兩種格式：換行分隔 或 逗號分隔
+      let codes;
+      if (text.includes(',')) {
+        // Comma separated
+        codes = text.split(',').map(l => l.trim()).filter(l => l);
+      } else {
+        // Newline separated
+        codes = text.split('\n').map(l => l.trim()).filter(l => l);
+      }
+      if (codes.length === 0) {
+        alert('沒有有效的驗證碼');
+        return;
+      }
+      if (codes.length > 50) {
+        alert('批量抽獎最多支持 50 個驗證碼');
+        return;
+      }
+
+      if (!confirm(`確定要進行 ${codes.length} 次批量抽獎嗎？此操作無法復原。`)) {
+        return;
+      }
+
+      drawBtn.disabled = true;
+      drawBtn.textContent = `批量抽獎進行中... 0/${codes.length}`;
+      batchResultsContent.innerHTML = '<p>正在處理，請稍候...</p>';
+
+      try {
+        const result = await apiRequest(`/api/raffle/${currentRaffleId}/batch-draw`, {
+          method: 'POST',
+          body: JSON.stringify({
+            codes,
+            username,
+            contact
+          }),
+        });
+
+        // Build results HTML
+        let html = `
+          <div style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border-radius: 8px;">
+            <strong>完成結果:</strong> ${result.successCount} / ${result.total} 成功
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #fafafa;">
+                <th style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">#</th>
+                <th style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">驗證碼</th>
+                <th style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">結果</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        result.results.forEach((item, index) => {
+          const statusStyle = item.success
+            ? 'background: #f0fdf4; color: #166534;'
+            : 'background: #fef2f2; color: #991b1b;';
+          const resultText = item.success
+            ? `✅ ${item.prize.name}${item.prize.is_final ? ' (最終賞)' : ''}`
+            : `❌ ${item.error}`;
+
+          html += `
+            <tr>
+              <td style="padding: 8px; border-bottom: 1px solid #eee;">${index + 1}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee; font-family: monospace;">${item.code}</td>
+              <td style="padding: 8px; border-bottom: 1px solid #eee;"><span style="padding: 4px 8px; border-radius: 4px; ${statusStyle}">${resultText}</span></td>
+            </tr>
+          `;
+        });
+
+        html += `
+            </tbody>
+          </table>
+          <div style="margin-top: 16px;">
+            <button id="reloadAfterBatch" class="btn btn-secondary">重新整理頁面更新獎品剩餘數</button>
+          </div>
+        `;
+
+        batchResultsContent.innerHTML = html;
+
+        document.getElementById('reloadAfterBatch').addEventListener('click', () => {
+          window.location.reload();
+        });
+
+      } catch (err) {
+        batchResultsContent.innerHTML = `<p style="color: red;">錯誤: ${err.message}</p>`;
+        alert(err.message);
+      } finally {
+        drawBtn.disabled = false;
+        drawBtn.textContent = `開始批量抽獎 (${codes.length} 個)`;
+      }
+    });
+  }
 }
 
 // ============================================
@@ -329,6 +477,61 @@ function initCreateRafflePage() {
 
   // Add prize button
   document.getElementById('addPrizeBtn').addEventListener('click', addPrize);
+
+  // Load default template button
+  document.getElementById('loadDefaultTemplateBtn').addEventListener('click', () => {
+    if (!currentRaffleId) {
+      alert('請先建立抽獎基本資訊');
+      return;
+    }
+    if (prizesAdded.length > 0) {
+      if (!confirm('已經有獎品，確定要載入預設 template 嗎？會新增多個獎品')) {
+        return;
+      }
+    }
+
+    // Default Ichiban Kuji prize template (total 80 draws: H=40, A-G=40)
+    const defaultPrizes = [
+      { tier: 'A', name: 'OFF會參加券', description: '', total_count: 1, is_final: false },
+      { tier: 'B', name: '攝影會參加券', description: '', total_count: 2, is_final: false },
+      { tier: 'C', name: '見面會 - 10秒個人攝影券', description: '', total_count: 3, is_final: false },
+      { tier: 'D', name: '見面會 - 10秒自拍券', description: '', total_count: 4, is_final: false },
+      { tier: 'E', name: '見面會 - 15秒video券', description: '', total_count: 6, is_final: false },
+      { tier: 'F', name: '見面會 - 簽名券', description: '', total_count: 8, is_final: false },
+      { tier: 'G', name: '見面會 - 合照券', description: '', total_count: 16, is_final: false },
+      { tier: 'H', name: '簽名拍立得', description: '', total_count: 40, is_final: false },
+      { tier: 'LAST', name: '迪士尼入場券', description: '', total_count: 1, is_final: true, pool_number: 1 }
+    ];
+
+    // Add all prizes one by one
+    async function addAll() {
+      const btn = document.getElementById('loadDefaultTemplateBtn');
+      btn.disabled = true;
+      btn.textContent = `載入中... 0/${defaultPrizes.length}`;
+
+      try {
+        for (let i = 0; i < defaultPrizes.length; i++) {
+          const p = defaultPrizes[i];
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes`, {
+            method: 'POST',
+            body: JSON.stringify(p)
+          });
+          btn.textContent = `載入中... ${i + 1}/${defaultPrizes.length}`;
+        }
+
+        // Reload the prize list
+        await loadPrizes();
+        alert(`預設 template 載入完成！已新增 ${defaultPrizes.length} 個獎品`);
+      } catch (err) {
+        alert(`載入失敗: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '載入預設一番賞獎品 template';
+      }
+    }
+
+    addAll();
+  });
 
   // Back button
   document.getElementById('backToStep1').addEventListener('click', () => {

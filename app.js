@@ -687,6 +687,275 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
   }
 });
 
+// Batch draw - process multiple verification codes at once
+app.post('/api/raffle/:id/batch-draw', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { codes, username, contact } = req.body;
+    const raffleId = parseInt(req.params.id);
+    const userId = req.session.user?.id || null;
+
+    if (!raffleId) {
+      return res.status(400).json({ error: '抽獎活動ID無效' });
+    }
+    if (!codes || !Array.isArray(codes) || codes.length === 0) {
+      return res.status(400).json({ error: '需要輸入驗證碼列表' });
+    }
+    if (!username || !contact) {
+      return res.status(400).json({ error: '需要填寫會員用戶名和聯絡方式' });
+    }
+    if (codes.length > 50) {
+      return res.status(400).json({ error: '批量抽獎最多支持 50 個驗證碼' });
+    }
+
+    // Check raffle exists and is active
+    const raffleResult = await dbQuery('SELECT * FROM raffles WHERE id = $1', [raffleId], client);
+    if (raffleResult.rows.length === 0) {
+      return res.status(400).json({ error: '抽獎活動不存在' });
+    }
+    const raffle = raffleResult.rows[0];
+    if (raffle.status !== 'active') {
+      return res.status(400).json({ error: '抽獎活動已關閉' });
+    }
+
+    const majorTiers = new Set(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
+    const results = [];
+    let successCount = 0;
+
+    // Process each code sequentially
+    for (const code of codes) {
+      const trimmedCode = code.trim();
+      if (!trimmedCode) continue;
+
+      try {
+        await client.query('BEGIN');
+
+        // Find unused code
+        const codeResult = await dbQuery(
+          `
+            SELECT vc.*, au.username as assigned_username
+            FROM verification_codes vc
+            LEFT JOIN users au ON vc.assigned_user_id = au.id
+            WHERE vc.code = $1 AND vc.raffle_id = $2 AND vc.used = false
+            FOR UPDATE OF vc
+          `,
+          [trimmedCode, raffleId],
+          client
+        );
+
+        if (codeResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '驗證碼無效或已使用'
+          });
+          continue;
+        }
+
+        const verificationCode = codeResult.rows[0];
+
+        // Check assigned user
+        if (verificationCode.assigned_user_id) {
+          if (!req.session.user) {
+            await client.query('ROLLBACK');
+            results.push({
+              code: trimmedCode,
+              success: false,
+              error: '此驗證碼已分配給會員，請登入後再抽獎'
+            });
+            continue;
+          }
+          if (Number(req.session.user.id) !== Number(verificationCode.assigned_user_id)) {
+            const assignedUsername = verificationCode.assigned_username || '指定會員';
+            const currentUsername = req.session.user.username || String(req.session.user.id);
+            await client.query('ROLLBACK');
+            results.push({
+              code: trimmedCode,
+              success: false,
+              error: `此驗證碼已分配給 ${assignedUsername}，目前登入係 ${currentUsername}`
+            });
+            continue;
+          }
+        }
+
+        // Check remaining boxes
+        if (raffle.remaining_boxes - successCount <= 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '所有盒子已經抽完'
+          });
+          continue;
+        }
+
+        // Get available prizes
+        const availableResult = await dbQuery(
+          `
+            SELECT * FROM prizes
+            WHERE raffle_id = $1 AND remaining_count > 0
+            ORDER BY is_final ASC
+            FOR UPDATE
+          `,
+          [raffleId],
+          client
+        );
+        const availablePrizes = availableResult.rows;
+
+        if (availablePrizes.length === 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '沒有剩餘獎品了'
+          });
+          continue;
+        }
+
+        // Do the random draw
+        const total = availablePrizes.reduce((sum, p) => sum + p.remaining_count, 0);
+        const roll = crypto.randomInt(0, total);
+        let acc = 0;
+        let drawnPrize = availablePrizes[0];
+        for (const p of availablePrizes) {
+          acc += Number(p.remaining_count);
+          if (roll < acc) {
+            drawnPrize = p;
+            break;
+          }
+        }
+
+        // Update prize count
+        const prizeUpdate = await dbQuery(
+          `
+            UPDATE prizes
+            SET remaining_count = remaining_count - 1
+            WHERE id = $1 AND remaining_count > 0
+            RETURNING id, name, tier, description, is_final, remaining_count
+          `,
+          [drawnPrize.id],
+          client
+        );
+        if (prizeUpdate.rows.length === 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '獎品餘量更新失敗'
+          });
+          continue;
+        }
+        const updatedPrize = prizeUpdate.rows[0];
+
+        // Mark code as used
+        const codeUpdate = await dbQuery(
+          `
+            UPDATE verification_codes
+            SET used = true, used_at = CURRENT_TIMESTAMP, user_id = $1
+            WHERE id = $2 AND used = false
+            RETURNING id
+          `,
+          [userId, verificationCode.id],
+          client
+        );
+        if (codeUpdate.rows.length === 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '驗證碼已被使用'
+          });
+          continue;
+        }
+
+        const effectiveUsername = req.session.user?.username || username;
+
+        // Insert entry
+        const entryResult = await dbQuery(
+          `
+            INSERT INTO entries (raffle_id, prize_id, buyer_name, buyer_contact, user_id, verification_code_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+          `,
+          [raffleId, updatedPrize.id, effectiveUsername, contact, userId, verificationCode.id],
+          client
+        );
+        const entryId = entryResult.rows[0].id;
+
+        // Insert winner
+        await dbQuery(
+          `
+            INSERT INTO winners (entry_id, raffle_id, prize_id, buyer_name, user_id)
+            VALUES ($1, $2, $3, $4, $5)
+          `,
+          [entryId, raffleId, updatedPrize.id, effectiveUsername, userId],
+          client
+        );
+
+        // Update raffle remaining boxes
+        await dbQuery(
+          `
+            UPDATE raffles
+            SET remaining_boxes = remaining_boxes - 1
+            WHERE id = $1
+          `,
+          [raffleId],
+          client
+        );
+
+        const displayPrizeName = majorTiers.has(updatedPrize.tier) ? updatedPrize.name : '親筆簽名拍立得一張';
+
+        await client.query('COMMIT');
+        successCount++;
+
+        results.push({
+          code: trimmedCode,
+          success: true,
+          entryId,
+          prize: { ...updatedPrize, name: displayPrizeName }
+        });
+      } catch (itemErr) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackErr) {
+          console.error('Rollback failed for item:', trimmedCode, rollbackErr);
+        }
+        results.push({
+          code: trimmedCode,
+          success: false,
+          error: '系統錯誤: ' + String(itemErr.message)
+        });
+      }
+    }
+
+    // Final update - if all boxes done, set status to completed
+    const finalCheck = await dbQuery('SELECT remaining_boxes FROM raffles WHERE id = $1', [raffleId], client);
+    const finalRemaining = finalCheck.rows[0]?.remaining_boxes || 0;
+    if (finalRemaining <= 0) {
+      await dbQuery("UPDATE raffles SET status = 'completed' WHERE id = $1", [raffleId], client);
+    }
+
+    res.json({
+      success: true,
+      total: codes.length,
+      successCount,
+      results
+    });
+
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Rollback failed:', rollbackErr);
+    }
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // ===== Admin Routes =====
 
 // Admin dashboard

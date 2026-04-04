@@ -227,7 +227,7 @@ h3 {
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: background-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base), opacity var(--transition-base);
   font-family: inherit;
   text-align: center;
   will-change: transform, box-shadow;
@@ -366,6 +366,11 @@ header .btn-outline:hover {
   min-height: 48px;
   transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-fast);
   will-change: border-color, box-shadow;
+}
+
+.form-group textarea {
+  resize: vertical;
+  line-height: 1.5;
 }
 
 .form-group input:focus,
@@ -734,6 +739,7 @@ header .btn-outline:hover {
   overflow-y: auto; /* Allow scrolling on small screens */
   -webkit-overflow-scrolling: touch;
   backdrop-filter: blur(4px); /* Modern backdrop blur effect */
+  overscroll-behavior: contain;
 }
 
 .modal.hidden {
@@ -1285,4 +1291,16 @@ section {
 
 .hidden {
   display: none;
+}
+
+/* Honor prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

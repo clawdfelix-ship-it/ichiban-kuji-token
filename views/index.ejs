@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>一番賞線上抽獎 - Ichiban Kuji Raffle</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -46,7 +47,7 @@
         <% raffles.forEach(raffle => { %>
           <div class="raffle-card">
             <% if (raffle.cover_image) { %>
-              <img class="raffle-cover" src="<%= raffle.cover_image %>" alt="<%= raffle.title %> 封面">
+              <img class="raffle-cover" width="300" height="160" src="<%= raffle.cover_image %>" alt="<%= raffle.title %> 封面">
             <% } %>
             <h3><%= raffle.title %></h3>
             <p><%= raffle.description %></p>
