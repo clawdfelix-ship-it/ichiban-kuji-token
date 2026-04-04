@@ -39,9 +39,14 @@
   <script src="/js/app.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
+      console.log('=== Ichiban Kuji - My Page Load ===');
+      
       // Check if user is logged in
       const userJson = localStorage.getItem('ikr_user');
+      console.log('localStorage userJson:', userJson);
+      
       if (!userJson) {
+        console.log('No user found in localStorage, show login required');
         document.getElementById('loginRequired').classList.remove('hidden');
         return;
       }
@@ -49,18 +54,32 @@
       let user;
       try {
         user = JSON.parse(userJson);
+        console.log('Parsed user:', user);
       } catch (e) {
-        console.error('Invalid user data in localStorage', e);
+        console.error('Invalid user JSON:', e);
+        localStorage.removeItem('ikr_user');
+        document.getElementById('loginRequired').classList.remove('hidden');
+        return;
+      }
+
+      if (!user.id) {
+        console.error('User has no id:', user);
         localStorage.removeItem('ikr_user');
         document.getElementById('loginRequired').classList.remove('hidden');
         return;
       }
 
       document.getElementById('myContent').classList.remove('hidden');
+      console.log('User authenticated, user id:', user.id);
 
       try {
-        const result = await apiRequest(`/api/my/entries?userId=${user.id}`);
+        const url = `/api/my/entries?userId=${user.id}`;
+        console.log('Fetching entries from:', url);
+        
+        const result = await apiRequest(url);
+        console.log('API response:', result);
         const entries = result.entries;
+        console.log('Got entries:', entries);
 
         const listEl = document.getElementById('entriesList');
         if (entries.length === 0) {
@@ -88,7 +107,7 @@
         listEl.innerHTML = html;
       } catch (err) {
         console.error('Failed to load entries', err);
-        alert('獲取抽獎記錄失敗: ' + err.message);
+        alert('獲取抽獎記錄失敗: ' + err.message + '\n\n' + JSON.stringify(err));
       }
     });
   </script>

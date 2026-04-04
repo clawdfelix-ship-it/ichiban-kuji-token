@@ -59,7 +59,10 @@
           // Store user in localStorage for simple auth
           localStorage.setItem('ikr_user', JSON.stringify(result.user));
           alert('登入成功！');
-          window.location.href = '/my';
+          // Delay to ensure localStorage is saved before navigation
+          setTimeout(() => {
+            window.location.href = '/my';
+          }, 100);
         } catch (err) {
           alert(err.message);
         }
