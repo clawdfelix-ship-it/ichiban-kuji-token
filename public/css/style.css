@@ -937,6 +937,31 @@ header .btn-outline:hover {
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.prize-admin-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.prize-admin-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.prize-admin-qty-text {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 .prize-admin-card:hover {
   transform: translateX(2px);
   box-shadow: var(--shadow-sm);
@@ -944,7 +969,7 @@ header .btn-outline:hover {
 
 .prize-admin-card.final {
   border-left-color: var(--primary-color);
-  background: #fff5f5;
+  background: #eff6ff;
 }
 
 .prize-admin-info h4 {

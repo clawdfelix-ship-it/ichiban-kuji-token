@@ -229,6 +229,7 @@ function initCodesModal() {
 // Create Raffle Page (Wizard)
 // ============================================
 let prizesAdded = [];
+let editingPrizeId = null;
 
 function initCreateRafflePage() {
   // Step 1: Basic info
@@ -342,27 +343,38 @@ async function addPrize() {
   }
 
   try {
-    const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/add`, {
-      method: 'POST',
-      body: JSON.stringify({
-        tier,
-        name,
-        description,
-        image_url,
-        total_count: parseInt(total_count),
-        is_final,
-        pool_number: is_final ? parseInt(pool_number) : null,
-      }),
-    });
-
-    // Add to list
-    prizesAdded.push({
-      id: result.prizeId,
+    const payload = {
       tier,
       name,
-      total_count,
+      description,
+      image_url,
+      total_count: parseInt(total_count, 10),
       is_final,
-    });
+      pool_number: is_final ? parseInt(pool_number, 10) : null
+    };
+
+    if (editingPrizeId) {
+      await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${editingPrizeId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      prizesAdded = prizesAdded.map(p =>
+        p.id === editingPrizeId ? { ...p, ...payload, total_count: payload.total_count } : p
+      );
+      editingPrizeId = null;
+      document.getElementById('addPrizeBtn').textContent = '新增此獎品';
+    } else {
+      const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/add`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      prizesAdded.push({
+        id: result.prizeId,
+        ...payload
+      });
+    }
 
     // Refresh display
     renderPrizeList();
@@ -397,18 +409,98 @@ function renderPrizeList() {
   }
 
   let html = '';
-  prizesAdded.forEach((prize, index) => {
+  prizesAdded.forEach((prize) => {
     html += `
       <div class="prize-admin-card ${prize.is_final ? 'final' : ''}">
         <div class="prize-admin-info">
           <h4>${prize.tier} - ${prize.name}</h4>
           <p>數量: ${prize.total_count} ${prize.is_final ? '(最終賞)' : ''}</p>
         </div>
+        <div class="prize-admin-actions">
+          <div class="prize-admin-qty">
+            <button class="btn btn-sm btn-secondary" data-action="dec" data-id="${prize.id}">-</button>
+            <span class="prize-admin-qty-text">${prize.total_count}</span>
+            <button class="btn btn-sm btn-secondary" data-action="inc" data-id="${prize.id}">+</button>
+          </div>
+          <button class="btn btn-sm btn-primary" data-action="edit" data-id="${prize.id}">編輯</button>
+          <button class="btn btn-sm btn-warning" data-action="delete" data-id="${prize.id}">刪除</button>
+        </div>
       </div>
     `;
   });
 
   listEl.innerHTML = html;
+
+  listEl.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.id, 10);
+      const action = btn.dataset.action;
+      const prize = prizesAdded.find(p => p.id === id);
+      if (!prize) return;
+
+      if (action === 'edit') {
+        editingPrizeId = id;
+        document.getElementById('tier').value = prize.tier;
+        document.getElementById('prize_name').value = prize.name || '';
+        document.getElementById('prize_description').value = prize.description || '';
+        document.getElementById('image_url').value = prize.image_url || '';
+        document.getElementById('total_count').value = String(prize.total_count || 1);
+        document.getElementById('is_final').checked = !!prize.is_final;
+        document.getElementById('poolNumberGroup').style.display = prize.is_final ? 'block' : 'none';
+        if (prize.is_final) {
+          document.getElementById('pool_number').value = String(prize.pool_number || 1);
+        }
+        document.getElementById('addPrizeBtn').textContent = '更新獎品';
+        return;
+      }
+
+      if (action === 'delete') {
+        if (!confirm('確定要刪除此獎品嗎?')) return;
+        try {
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${id}`, { method: 'DELETE' });
+          prizesAdded = prizesAdded.filter(p => p.id !== id);
+          if (editingPrizeId === id) {
+            editingPrizeId = null;
+            document.getElementById('addPrizeBtn').textContent = '新增此獎品';
+          }
+          renderPrizeList();
+          if (prizesAdded.length === 0) {
+            document.getElementById('finishBtn').disabled = true;
+          }
+        } catch (err) {
+          alert(err.message);
+        }
+        return;
+      }
+
+      if (action === 'inc' || action === 'dec') {
+        const delta = action === 'inc' ? 1 : -1;
+        const nextTotal = parseInt(prize.total_count, 10) + delta;
+        if (!nextTotal || nextTotal < 1) return;
+        btn.disabled = true;
+        try {
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              tier: prize.tier,
+              name: prize.name,
+              description: prize.description,
+              image_url: prize.image_url,
+              total_count: nextTotal,
+              is_final: !!prize.is_final,
+              pool_number: prize.is_final ? prize.pool_number || 1 : null
+            })
+          });
+          prizesAdded = prizesAdded.map(p => (p.id === id ? { ...p, total_count: nextTotal } : p));
+          renderPrizeList();
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    });
+  });
 }
 
 // ============================================

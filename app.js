@@ -818,6 +818,60 @@ app.post('/api/admin/raffles/:id/prizes/add', async (req, res) => {
   }
 });
 
+app.put('/api/admin/raffles/:raffleId/prizes/:prizeId', async (req, res) => {
+  try {
+    if (!req.session.user || !req.session.user.is_admin) {
+      return res.status(403).json({ error: '需要管理員權限' });
+    }
+
+    const raffleId = parseInt(req.params.raffleId);
+    const prizeId = parseInt(req.params.prizeId);
+    if (!raffleId || !prizeId) {
+      return res.status(400).json({ error: 'ID無效' });
+    }
+
+    const { tier, name, description, image_url, total_count, is_final, pool_number } = req.body;
+    const parsedTotal = parseInt(total_count);
+    if (!name || !parsedTotal || parsedTotal < 1) {
+      return res.status(400).json({ error: '請填寫正確獎品資料' });
+    }
+
+    const entryCountResult = await dbQuery('SELECT COUNT(*) as count FROM entries WHERE prize_id = $1', [prizeId]);
+    if (entryCountResult.rows[0]?.count !== '0') {
+      return res.status(400).json({ error: '此獎品已有抽獎記錄，不能修改' });
+    }
+
+    const isFinal = !!is_final;
+    const poolNumber = isFinal ? parseInt(pool_number) || 1 : null;
+
+    const updated = await dbQuery(
+      `
+        UPDATE prizes
+        SET tier = $1,
+            name = $2,
+            description = $3,
+            image_url = $4,
+            total_count = $5,
+            remaining_count = $5,
+            is_final = $6,
+            pool_number = $7
+        WHERE id = $8 AND raffle_id = $9
+        RETURNING id
+      `,
+      [tier, name, description || null, image_url || null, parsedTotal, isFinal, poolNumber, prizeId, raffleId]
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: '獎品不存在' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get raffle with prizes for admin editing
 app.get('/api/admin/raffles/:id', async (req, res) => {
   try {
@@ -839,6 +893,11 @@ app.delete('/api/admin/raffles/:raffleId/prizes/:prizeId', async (req, res) => {
   try {
     if (!req.session.user || !req.session.user.is_admin) {
       return res.status(403).json({ error: '需要管理員權限' });
+    }
+    const prizeId = parseInt(req.params.prizeId);
+    const entryCountResult = await dbQuery('SELECT COUNT(*) as count FROM entries WHERE prize_id = $1', [prizeId]);
+    if (entryCountResult.rows[0]?.count !== '0') {
+      return res.status(400).json({ error: '此獎品已有抽獎記錄，不能刪除' });
     }
     await dbQuery('DELETE FROM prizes WHERE id = $1 AND raffle_id = $2', [
       req.params.prizeId, 
