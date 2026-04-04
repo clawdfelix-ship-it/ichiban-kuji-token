@@ -128,6 +128,30 @@ function initAdminDashboard() {
       }
     });
   });
+
+  const resetBtn = document.getElementById('resetRafflesBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('確定要重置抽獎活動列表嗎？此操作會刪除所有抽獎、獎品、驗證碼及抽獎記錄。')) {
+        return;
+      }
+      const token = prompt('請輸入重置 Token（Vercel env: ADMIN_RESET_TOKEN）');
+      if (!token) return;
+      resetBtn.disabled = true;
+      try {
+        await apiRequest('/api/admin/reset', {
+          method: 'POST',
+          body: JSON.stringify({ token, confirm: 'RESET' })
+        });
+        alert('重置完成');
+        window.location.reload();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        resetBtn.disabled = false;
+      }
+    });
+  }
 }
 
 // ============================================

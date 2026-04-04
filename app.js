@@ -702,6 +702,52 @@ app.get('/admin/login', (req, res) => {
   res.render('login', { adminMode: true });
 });
 
+app.post('/api/admin/reset', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    if (!req.session.user || !req.session.user.is_admin) {
+      return res.status(403).json({ error: '需要管理員權限' });
+    }
+
+    const token = typeof req.body.token === 'string' ? req.body.token : '';
+    const confirmText = typeof req.body.confirm === 'string' ? req.body.confirm : '';
+
+    if (!process.env.ADMIN_RESET_TOKEN) {
+      return res.status(400).json({ error: '未設定 ADMIN_RESET_TOKEN，不能使用重置功能' });
+    }
+    if (confirmText !== 'RESET') {
+      return res.status(400).json({ error: '請確認重置操作' });
+    }
+    if (!token || token !== process.env.ADMIN_RESET_TOKEN) {
+      return res.status(403).json({ error: '重置 Token 不正確' });
+    }
+
+    await client.query('BEGIN');
+    await client.query('DELETE FROM winners');
+    await client.query('DELETE FROM entries');
+    await client.query('DELETE FROM verification_codes');
+    await client.query('DELETE FROM prizes');
+    await client.query('DELETE FROM raffles');
+
+    await client.query(`SELECT setval(pg_get_serial_sequence('raffles','id'), 1, false)`);
+    await client.query(`SELECT setval(pg_get_serial_sequence('prizes','id'), 1, false)`);
+    await client.query(`SELECT setval(pg_get_serial_sequence('verification_codes','id'), 1, false)`);
+    await client.query(`SELECT setval(pg_get_serial_sequence('entries','id'), 1, false)`);
+    await client.query(`SELECT setval(pg_get_serial_sequence('winners','id'), 1, false)`);
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // Create raffle API
 app.post('/api/admin/raffles/create', upload.single('cover_image'), async (req, res) => {
   try {

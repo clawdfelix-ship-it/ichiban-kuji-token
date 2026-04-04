@@ -24,7 +24,10 @@
   <main class="container">
     <div class="admin-header">
       <h2>抽獎活動列表</h2>
-      <a href="/admin/create" class="btn btn-primary">建立新抽獎</a>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:flex-end;">
+        <button id="resetRafflesBtn" class="btn btn-warning">重置列表</button>
+        <a href="/admin/create" class="btn btn-primary">建立新抽獎</a>
+      </div>
     </div>
 
     <% if (raffles.length === 0) { %>
