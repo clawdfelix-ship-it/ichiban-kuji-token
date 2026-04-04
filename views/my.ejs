@@ -15,16 +15,18 @@
   </header>
 
   <main class="container">
-    <div id="loginRequired" class="empty-state hidden">
+    <div id="loginRequired" class="empty-state">
       <p>請先登入會員才能查看你的抽獎記錄</p>
       <a href="/login" class="btn btn-primary">立即登入</a>
     </div>
 
     <div id="myContent" class="hidden">
-      <h2>我的抽獎記錄</h2>
-      <div id="entriesList" class="my-entries-list">
-        <!-- loaded by JS -->
-      </div>
+      <section class="user-section">
+        <h2>我的中獎記錄</h2>
+        <div id="entriesList" class="user-winnings">
+          <!-- loaded by JS -->
+        </div>
+      </section>
     </div>
   </main>
 
@@ -44,7 +46,16 @@
         return;
       }
 
-      const user = JSON.parse(userJson);
+      let user;
+      try {
+        user = JSON.parse(userJson);
+      } catch (e) {
+        console.error('Invalid user data in localStorage', e);
+        localStorage.removeItem('ikr_user');
+        document.getElementById('loginRequired').classList.remove('hidden');
+        return;
+      }
+
       document.getElementById('myContent').classList.remove('hidden');
 
       try {
@@ -60,7 +71,7 @@
         let html = '';
         entries.forEach(entry => {
           html += `
-            <div class="my-entry-card ${entry.prize_is_final ? 'final' : ''}">
+            <div class="winning-card ${entry.prize_is_final ? 'final' : ''}">
               <div class="my-entry-header">
                 <strong>${entry.raffle_title}</strong>
                 <span class="date">${new Date(entry.drawn_at).toLocaleString('zh-HK')}</span>
@@ -76,7 +87,8 @@
 
         listEl.innerHTML = html;
       } catch (err) {
-        alert(err.message);
+        console.error('Failed to load entries', err);
+        alert('獲取抽獎記錄失敗: ' + err.message);
       }
     });
   </script>
