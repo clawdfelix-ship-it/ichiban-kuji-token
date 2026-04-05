@@ -1222,7 +1222,7 @@ app.post('/api/admin/raffles/:id/prizes/add', async (req, res) => {
       pool_number 
     } = req.body;
     
-    const raffleId = req.params.id;
+    const raffleId = parseInt(req.params.id);
     
     const parsedTotal = parseInt(total_count);
     if (!name || !parsedTotal || parsedTotal < 1) {
@@ -1236,7 +1236,7 @@ app.post('/api/admin/raffles/:id/prizes/add', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
     `, [
-      parseInt(raffleId),
+      raffleId,
       tier,
       name,
       description || null,

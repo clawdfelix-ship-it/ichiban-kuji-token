@@ -512,7 +512,7 @@ function initCreateRafflePage() {
       try {
         for (let i = 0; i < defaultPrizes.length; i++) {
           const p = defaultPrizes[i];
-          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes`, {
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/add`, {
             method: 'POST',
             body: JSON.stringify(p)
           });
