@@ -521,6 +521,9 @@ function initCreateRafflePage() {
         }
 
         renderPrizeList();
+        if (prizesAdded.length > 0) {
+          document.getElementById('finishBtn').disabled = false;
+        }
         alert(`預設 template 載入完成！已新增 ${defaultPrizes.length} 個獎品`);
       } catch (err) {
         alert(`載入失敗: ${err.message}`);
