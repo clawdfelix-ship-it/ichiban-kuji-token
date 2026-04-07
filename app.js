@@ -318,13 +318,13 @@ app.post('/api/auth/register', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: '請填寫用戶名和密碼' });
     }
-    
+
     // Check if username exists
     const existing = await dbQuery('SELECT id FROM users WHERE username = $1', [username]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: '用戶名已存在' });
     }
-    
+
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await dbQuery(`
       INSERT INTO users (username, password_hash, contact, is_admin)
@@ -412,15 +412,15 @@ app.get('/raffle/:id', async (req, res) => {
       return res.status(404).send('抽獎活動不存在');
     }
     const raffle = raffleResult.rows[0];
-    
+
     // Get all prizes grouped by tier
     const prizesResult = await dbQuery(`
-      SELECT * FROM prizes 
-      WHERE raffle_id = $1 
+      SELECT * FROM prizes
+      WHERE raffle_id = $1
       ORDER BY pool_number, is_final DESC, tier
     `, [req.params.id]);
     const prizes = prizesResult.rows;
-    
+
     // Group by pool for final prizes
     const pools = [];
     for (let i = 1; i <= raffle.num_pools; i++) {
@@ -430,10 +430,10 @@ app.get('/raffle/:id', async (req, res) => {
         prizes: poolPrizes
       });
     }
-    
+
     // Get recent winners
     const winnersResult = await dbQuery(`
-      SELECT w.*, 
+      SELECT w.*,
              CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
              p.tier as prize_tier
       FROM winners w
@@ -442,14 +442,14 @@ app.get('/raffle/:id', async (req, res) => {
       ORDER BY w.drawn_at DESC
       LIMIT 20
     `, [req.params.id]);
-    
+
     const remainingCount = raffle.remaining_boxes;
-    
-    res.render('raffle', { 
-      raffle, 
-      pools, 
-      winners: winnersResult.rows, 
-      remainingCount 
+
+    res.render('raffle', {
+      raffle,
+      pools,
+      winners: winnersResult.rows,
+      remainingCount
     });
   } catch (err) {
     console.error(err);
@@ -477,7 +477,7 @@ app.get('/api/raffle/:id/prizes', async (req, res) => {
 app.get('/api/raffle/:id/winners', async (req, res) => {
   try {
     const result = await dbQuery(`
-      SELECT w.*, 
+      SELECT w.*,
              CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
              p.tier as prize_tier
       FROM winners w
@@ -910,4 +910,8 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
       results
     });
 
-  } catch (err)
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Roll
