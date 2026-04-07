@@ -205,6 +205,7 @@ async function initDatabase() {
         id SERIAL PRIMARY KEY,
         raffle_id INTEGER,
         code TEXT UNIQUE,
+        prize_id INTEGER,
         used BOOLEAN DEFAULT FALSE,
         used_at TIMESTAMP NULL,
         user_id INTEGER NULL,
@@ -212,7 +213,8 @@ async function initDatabase() {
         assigned_at TIMESTAMP NULL,
         assigned_by INTEGER NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(raffle_id) REFERENCES raffles(id)
+        FOREIGN KEY(raffle_id) REFERENCES raffles(id),
+        FOREIGN KEY(prize_id) REFERENCES prizes(id)
       );
     `);
 
@@ -325,8 +327,8 @@ app.post('/api/auth/register', async (req, res) => {
     
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await dbQuery(`
-      INSERT INTO users (username, password_hash, is_admin, contact)
-      VALUES ($1, $2, 0, $3)
+      INSERT INTO users (username, password_hash, contact, is_admin)
+      VALUES ($1, $2, $3, 0)
       RETURNING id, username, contact, is_admin, created_at
     `, [username, passwordHash, contact || null]);
 
@@ -559,40 +561,28 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       return res.status(400).json({ error: '所有盒子已經抽完' });
     }
 
-    const availableResult = await dbQuery(
+    // Get the pre-allocated prize from verification code
+    if (!verificationCode.prize_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: '驗證碼資料錯誤，缺少預分配獎項' });
+    }
+
+    const prizeResult = await dbQuery(
       `
         SELECT * FROM prizes
-        WHERE raffle_id = $1 AND remaining_count > 0
-        ORDER BY is_final ASC
+        WHERE id = $1 AND raffle_id = $2 AND remaining_count > 0
         FOR UPDATE
       `,
-      [raffleId],
+      [verificationCode.prize_id, raffleId],
       client
     );
-    const availablePrizes = availableResult.rows;
-    if (availablePrizes.length === 0) {
+    if (prizeResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: '沒有剩餘獎品了' });
+      return res.status(400).json({ error: '此獎項已經被抽完，驗證碼無效' });
     }
+    const drawnPrize = prizeResult.rows[0];
 
-    let total = 0;
-    for (const p of availablePrizes) total += Number(p.remaining_count || 0);
-    if (total <= 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: '沒有剩餘獎品了' });
-    }
-
-    const roll = crypto.randomInt(0, total);
-    let acc = 0;
-    let drawnPrize = availablePrizes[0];
-    for (const p of availablePrizes) {
-      acc += Number(p.remaining_count);
-      if (roll < acc) {
-        drawnPrize = p;
-        break;
-      }
-    }
-
+    // Update prize count
     const prizeUpdate = await dbQuery(
       `
         UPDATE prizes
@@ -603,12 +593,9 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       [drawnPrize.id],
       client
     );
-    if (prizeUpdate.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: '獎品餘量更新失敗，請重試' });
-    }
     const updatedPrize = prizeUpdate.rows[0];
 
+    // Update raffle remaining boxes
     const raffleUpdate = await dbQuery(
       `
         UPDATE raffles
@@ -619,15 +606,12 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       [raffleId],
       client
     );
-    if (raffleUpdate.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: '盒子餘量更新失敗，請重試' });
-    }
     const remainingBoxes = raffleUpdate.rows[0].remaining_boxes;
     if (remainingBoxes <= 0) {
       await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffleId], client);
     }
 
+    // Mark code as used
     const codeUpdate = await dbQuery(
       `
         UPDATE verification_codes
@@ -643,6 +627,7 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       return res.status(409).json({ error: '驗證碼已被使用，請檢查後重試' });
     }
 
+    // Create entry
     const entryResult = await dbQuery(
       `
         INSERT INTO entries (raffle_id, prize_id, buyer_name, buyer_contact, user_id, verification_code_id)
@@ -711,7 +696,7 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
     // Check raffle exists and is active
     const raffleResult = await dbQuery('SELECT * FROM raffles WHERE id = $1', [raffleId], client);
     if (raffleResult.rows.length === 0) {
-      return res.status(400).json({ error: '抽獎活動不存在' });
+      return res.status(404).json({ error: '抽獎活動不存在' });
     }
     const raffle = raffleResult.rows[0];
     if (raffle.status !== 'active') {
@@ -779,6 +764,33 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
           }
         }
 
+        // Check that prize still exists and is available
+        if (!verificationCode.prize_id) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '驗證碼未預分配獎項，資料錯誤'
+          });
+          continue;
+        }
+
+        const prizeCheck = await dbQuery(
+          `SELECT * FROM prizes WHERE id = $1 AND raffle_id = $2 AND remaining_count > 0`,
+          [verificationCode.prize_id, raffleId],
+          client
+        );
+        if (prizeCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          results.push({
+            code: trimmedCode,
+            success: false,
+            error: '對應獎項已抽完'
+          });
+          continue;
+        }
+        const drawnPrize = prizeCheck.rows[0];
+
         // Check remaining boxes
         if (raffle.remaining_boxes - successCount <= 0) {
           await client.query('ROLLBACK');
@@ -788,42 +800,6 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
             error: '所有盒子已經抽完'
           });
           continue;
-        }
-
-        // Get available prizes
-        const availableResult = await dbQuery(
-          `
-            SELECT * FROM prizes
-            WHERE raffle_id = $1 AND remaining_count > 0
-            ORDER BY is_final ASC
-            FOR UPDATE
-          `,
-          [raffleId],
-          client
-        );
-        const availablePrizes = availableResult.rows;
-
-        if (availablePrizes.length === 0) {
-          await client.query('ROLLBACK');
-          results.push({
-            code: trimmedCode,
-            success: false,
-            error: '沒有剩餘獎品了'
-          });
-          continue;
-        }
-
-        // Do the random draw
-        const total = availablePrizes.reduce((sum, p) => sum + p.remaining_count, 0);
-        const roll = crypto.randomInt(0, total);
-        let acc = 0;
-        let drawnPrize = availablePrizes[0];
-        for (const p of availablePrizes) {
-          acc += Number(p.remaining_count);
-          if (roll < acc) {
-            drawnPrize = p;
-            break;
-          }
         }
 
         // Update prize count
@@ -837,15 +813,6 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
           [drawnPrize.id],
           client
         );
-        if (prizeUpdate.rows.length === 0) {
-          await client.query('ROLLBACK');
-          results.push({
-            code: trimmedCode,
-            success: false,
-            error: '獎品餘量更新失敗'
-          });
-          continue;
-        }
         const updatedPrize = prizeUpdate.rows[0];
 
         // Mark code as used
@@ -943,604 +910,4 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
       results
     });
 
-  } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch (rollbackErr) {
-      console.error('Rollback failed:', rollbackErr);
-    }
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  } finally {
-    client.release();
-  }
-});
-
-// ===== Admin Routes =====
-
-// Admin dashboard
-app.get('/admin', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.redirect('/admin/login');
-    }
-    const result = await dbQuery(`
-      SELECT * FROM raffles 
-      ORDER BY created_at DESC
-    `);
-    res.render('admin/dashboard', { raffles: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error: ' + err.message);
-  }
-});
-
-// Create raffle page
-app.get('/admin/create', requireAdmin, (req, res) => {
-  res.render('admin/create');
-});
-
-app.get('/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
-  try {
-    const raffleId = parseInt(req.params.id);
-    if (!raffleId) {
-      return res.status(400).send('抽獎活動ID無效');
-    }
-    const raffleResult = await dbQuery('SELECT id, title FROM raffles WHERE id = $1', [raffleId]);
-    if (raffleResult.rows.length === 0) {
-      return res.status(404).send('抽獎活動不存在');
-    }
-    res.render('admin/codes', { raffleId, title: raffleResult.rows[0].title });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
-  }
-});
-
-app.get('/admin/login', (req, res) => {
-  if (req.session.user?.is_admin) {
-    return res.redirect('/admin');
-  }
-  res.render('login', { adminMode: true });
-});
-
-app.get('/admin/users', requireAdmin, (req, res) => {
-  res.render('admin/users');
-});
-
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-
-    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-    const limit = 200;
-
-    const params = [];
-    let whereSql = '';
-    if (q) {
-      params.push(`%${q}%`);
-      whereSql = `WHERE u.username ILIKE $${params.length}`;
-    }
-
-    const result = await dbQuery(
-      `
-        SELECT
-          u.id,
-          u.username,
-          u.contact,
-          u.is_admin,
-          u.created_at,
-          COALESCE(e.cnt, 0) as entries_count,
-          COALESCE(vc_assign.cnt, 0) as codes_assigned_count,
-          COALESCE(vc_use.cnt, 0) as codes_used_count
-        FROM users u
-        LEFT JOIN (
-          SELECT user_id, COUNT(*)::int as cnt
-          FROM entries
-          WHERE user_id IS NOT NULL
-          GROUP BY user_id
-        ) e ON e.user_id = u.id
-        LEFT JOIN (
-          SELECT assigned_user_id, COUNT(*)::int as cnt
-          FROM verification_codes
-          WHERE assigned_user_id IS NOT NULL
-          GROUP BY assigned_user_id
-        ) vc_assign ON vc_assign.assigned_user_id = u.id
-        LEFT JOIN (
-          SELECT user_id, COUNT(*)::int as cnt
-          FROM verification_codes
-          WHERE user_id IS NOT NULL
-          GROUP BY user_id
-        ) vc_use ON vc_use.user_id = u.id
-        ${whereSql}
-        ORDER BY u.created_at DESC
-        LIMIT ${limit}
-      `,
-      params
-    );
-
-    res.json({ users: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/admin/users/:id/reset-password', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-
-    const userId = parseInt(req.params.id);
-    const password = typeof req.body.password === 'string' ? req.body.password : '';
-    if (!userId) {
-      return res.status(400).json({ error: '用戶ID無效' });
-    }
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: '新密碼至少 6 個字' });
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-    const updated = await dbQuery('UPDATE users SET password_hash = $1 WHERE id = $2 RETURNING id', [hash, userId]);
-    if (updated.rows.length === 0) {
-      return res.status(404).json({ error: '會員不存在' });
-    }
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/admin/reset', async (req, res) => {
-  const client = await pool.connect();
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-
-    const token = typeof req.body.token === 'string' ? req.body.token : '';
-    const confirmText = typeof req.body.confirm === 'string' ? req.body.confirm : '';
-
-    if (!process.env.ADMIN_RESET_TOKEN) {
-      return res.status(400).json({ error: '未設定 ADMIN_RESET_TOKEN，不能使用重置功能' });
-    }
-    if (confirmText !== 'RESET') {
-      return res.status(400).json({ error: '請確認重置操作' });
-    }
-    if (!token || token !== process.env.ADMIN_RESET_TOKEN) {
-      return res.status(403).json({ error: '重置 Token 不正確' });
-    }
-
-    await client.query('BEGIN');
-    await client.query('DELETE FROM winners');
-    await client.query('DELETE FROM entries');
-    await client.query('DELETE FROM verification_codes');
-    await client.query('DELETE FROM prizes');
-    await client.query('DELETE FROM raffles');
-
-    await client.query(`SELECT setval(pg_get_serial_sequence('raffles','id'), 1, false)`);
-    await client.query(`SELECT setval(pg_get_serial_sequence('prizes','id'), 1, false)`);
-    await client.query(`SELECT setval(pg_get_serial_sequence('verification_codes','id'), 1, false)`);
-    await client.query(`SELECT setval(pg_get_serial_sequence('entries','id'), 1, false)`);
-    await client.query(`SELECT setval(pg_get_serial_sequence('winners','id'), 1, false)`);
-
-    await client.query('COMMIT');
-    res.json({ success: true });
-  } catch (err) {
-    try {
-      await client.query('ROLLBACK');
-    } catch {}
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  } finally {
-    client.release();
-  }
-});
-
-// Create raffle API
-app.post('/api/admin/raffles/create', upload.single('cover_image'), async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    const { 
-      title, 
-      description, 
-      total_boxes, 
-      price_per_box, 
-      num_pools,
-      start_date,
-      end_date 
-    } = req.body;
-
-    let coverImage = null;
-    if (req.file) {
-      const isImage = typeof req.file.mimetype === 'string' && req.file.mimetype.startsWith('image/');
-      if (!isImage) {
-        return res.status(400).json({ error: '封面必須是圖片檔案' });
-      }
-      const dataUri = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
-      coverImage = dataUri;
-    }
-    
-    const parsedTotalBoxes = parseInt(total_boxes);
-    const parsedPrice = parseFloat(price_per_box);
-    const parsedPools = parseInt(num_pools || 1);
-
-    if (!title || !parsedTotalBoxes || parsedTotalBoxes < 1 || !parsedPrice || parsedPrice < 0) {
-      return res.status(400).json({ error: '請填寫正確抽獎資料' });
-    }
-    if (!parsedPools || parsedPools < 1 || parsedPools > 50) {
-      return res.status(400).json({ error: 'Pool 數量不正確' });
-    }
-
-    const result = await dbQuery(`
-      INSERT INTO raffles (
-        title, description, type, total_boxes, price_per_box, cover_image,
-        remaining_boxes, num_pools, start_date, end_date, status
-      ) VALUES ($1, $2, 'ichiban', $3, $4, $5, $6, $7, $8, $9, 'active')
-      RETURNING id
-    `, [
-      title, 
-      description, 
-      parsedTotalBoxes,
-      parsedPrice,
-      coverImage,
-      parsedTotalBoxes,
-      parsedPools,
-      start_date || null,
-      end_date || null
-    ]);
-    
-    res.json({ 
-      success: true, 
-      raffleId: result.rows[0].id 
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Add prize to raffle
-app.post('/api/admin/raffles/:id/prizes/add', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    const { 
-      tier, 
-      name, 
-      description, 
-      image_url, 
-      total_count,
-      is_final,
-      pool_number 
-    } = req.body;
-    
-    const raffleId = parseInt(req.params.id);
-    
-    const parsedTotal = parseInt(total_count);
-    if (!name || !parsedTotal || parsedTotal < 1) {
-      return res.status(400).json({ error: '請填寫正確獎品資料' });
-    }
-
-    const result = await dbQuery(`
-      INSERT INTO prizes (
-        raffle_id, tier, name, description, image_url, 
-        total_count, remaining_count, is_final, pool_number
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id
-    `, [
-      raffleId,
-      tier,
-      name,
-      description || null,
-      image_url || null,
-      parsedTotal,
-      parsedTotal,
-      is_final ? 't' : 'f',
-      is_final ? (parseInt(pool_number) || 1) : null
-    ]);
-    
-    res.json({ 
-      success: true, 
-      prizeId: result.rows[0].id 
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.put('/api/admin/raffles/:raffleId/prizes/:prizeId', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-
-    const raffleId = parseInt(req.params.raffleId);
-    const prizeId = parseInt(req.params.prizeId);
-    if (!raffleId || !prizeId) {
-      return res.status(400).json({ error: 'ID無效' });
-    }
-
-    const { tier, name, description, image_url, total_count, is_final, pool_number } = req.body;
-    const parsedTotal = parseInt(total_count);
-    if (!name || !parsedTotal || parsedTotal < 1) {
-      return res.status(400).json({ error: '請填寫正確獎品資料' });
-    }
-
-    const entryCountResult = await dbQuery('SELECT COUNT(*) as count FROM entries WHERE prize_id = $1', [prizeId]);
-    if (entryCountResult.rows[0]?.count !== '0') {
-      return res.status(400).json({ error: '此獎品已有抽獎記錄，不能修改' });
-    }
-
-    const isFinal = !!is_final;
-    const poolNumber = isFinal ? parseInt(pool_number) || 1 : null;
-
-    const updated = await dbQuery(
-      `
-        UPDATE prizes
-        SET tier = $1,
-            name = $2,
-            description = $3,
-            image_url = $4,
-            total_count = $5,
-            remaining_count = $5,
-            is_final = $6,
-            pool_number = $7
-        WHERE id = $8 AND raffle_id = $9
-        RETURNING id
-      `,
-      [tier, name, description || null, image_url || null, parsedTotal, isFinal, poolNumber, prizeId, raffleId]
-    );
-
-    if (updated.rows.length === 0) {
-      return res.status(404).json({ error: '獎品不存在' });
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get raffle with prizes for admin editing
-app.get('/api/admin/raffles/:id', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    const raffleResult = await dbQuery('SELECT * FROM raffles WHERE id = $1', [req.params.id]);
-    const prizesResult = await dbQuery('SELECT * FROM prizes WHERE raffle_id = $1 ORDER BY pool_number, is_final DESC, tier', [req.params.id]);
-    
-    res.json({ raffle: raffleResult.rows[0], prizes: prizesResult.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Delete prize
-app.delete('/api/admin/raffles/:raffleId/prizes/:prizeId', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    const prizeId = parseInt(req.params.prizeId);
-    const entryCountResult = await dbQuery('SELECT COUNT(*) as count FROM entries WHERE prize_id = $1', [prizeId]);
-    if (entryCountResult.rows[0]?.count !== '0') {
-      return res.status(400).json({ error: '此獎品已有抽獎記錄，不能刪除' });
-    }
-    await dbQuery('DELETE FROM prizes WHERE id = $1 AND raffle_id = $2', [
-      req.params.prizeId, 
-      req.params.raffleId
-    ]);
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Close/reopen raffle
-app.post('/api/admin/raffles/:id/status', async (req, res) => {
-  try {
-    const { status } = req.body;
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    if (!['active', 'closed', 'completed'].includes(status)) {
-      return res.status(400).json({ error: '狀態不正確' });
-    }
-    await dbQuery('UPDATE raffles SET status = $1 WHERE id = $2', [status, req.params.id]);
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Generate verification codes (admin only)
-app.post('/api/admin/raffles/:id/generate-codes', async (req, res) => {
-  try {
-    const { count, username } = req.body;
-    const raffleId = parseInt(req.params.id);
-    const numCount = parseInt(count);
-    const trimmedUsername = typeof username === 'string' ? username.trim() : '';
-
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-
-    if (!raffleId) {
-      return res.status(400).json({ error: '抽獎活動ID無效' });
-    }
-    
-    if (!numCount || numCount < 1) {
-      return res.status(400).json({ error: '請輸入正確數量' });
-    }
-    if (numCount > 5000) {
-      return res.status(400).json({ error: '一次最多生成 5000 個驗證碼' });
-    }
-
-    let assignedUserId = null;
-    if (trimmedUsername) {
-      const userResult = await dbQuery('SELECT id FROM users WHERE username = $1 LIMIT 1', [trimmedUsername]);
-      if (userResult.rows.length === 0) {
-        return res.status(400).json({ error: '找不到此會員用戶名' });
-      }
-      assignedUserId = userResult.rows[0].id;
-    }
-
-    try {
-      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_user_id INTEGER NULL');
-      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP NULL');
-      await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_by INTEGER NULL');
-    } catch (schemaErr) {
-      console.error('Schema ensure failed (verification_codes):', schemaErr);
-    }
-    
-    const codes = [];
-    while (codes.length < numCount) {
-      const code = crypto.randomBytes(6).toString('hex');
-      const inserted = await dbQuery(
-        `
-          INSERT INTO verification_codes (raffle_id, code, assigned_user_id, assigned_at, assigned_by)
-          VALUES ($1, $2, $3::INTEGER, CASE WHEN $3::INTEGER IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END, $4::INTEGER)
-          ON CONFLICT (code) DO NOTHING
-          RETURNING code
-        `,
-        [raffleId, code, assignedUserId, req.session.user.id]
-      );
-      if (inserted.rows.length > 0) {
-        codes.push(inserted.rows[0].code);
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      codes: codes,
-      count: codes.length
-    });
-  } catch (err) {
-    console.error('Generate codes error:', err);
-    const msg = err && err.message ? err.message : 'Unknown error';
-    const code = err && err.code ? err.code : null;
-    res.status(500).json({ error: `Server error: ${msg}${code ? ` (${code})` : ''}` });
-  }
-});
-
-// Get verification codes list for a raffle
-app.get('/api/admin/raffles/:id/codes', async (req, res) => {
-  try {
-    if (!req.session.user || !req.session.user.is_admin) {
-      return res.status(403).json({ error: '需要管理員權限' });
-    }
-    const result = await dbQuery(`
-      SELECT vc.*, au.username as assigned_username, uu.username as used_username
-      FROM verification_codes vc
-      LEFT JOIN users au ON vc.assigned_user_id = au.id
-      LEFT JOIN users uu ON vc.user_id = uu.id
-      WHERE vc.raffle_id = $1
-      ORDER BY vc.created_at DESC
-    `, [req.params.id]);
-    
-    res.json({ codes: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Get my entries (for logged in user)
-app.get('/api/my/entries', async (req, res) => {
-  try {
-    if (!req.session.user) {
-      return res.status(401).json({ error: '需要登入' });
-    }
-    const userId = req.session.user.id;
-    
-    const result = await dbQuery(`
-      SELECT e.*, 
-             r.title as raffle_title, 
-             CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得一張' END as prize_name,
-             p.tier as prize_tier, 
-             p.is_final as prize_is_final
-      FROM entries e
-      JOIN raffles r ON e.raffle_id = r.id
-      LEFT JOIN prizes p ON e.prize_id = p.id
-      WHERE e.user_id = $1
-      ORDER BY e.drawn_at DESC
-    `, [userId]);
-    
-    res.json({ entries: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Login API
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: '請填寫用戶名和密碼' });
-    }
-    
-    const result = await dbQuery('SELECT * FROM users WHERE username = $1', [username]);
-    if (result.rows.length === 0) {
-      return res.status(400).json({ error: '用戶名或密碼錯誤' });
-    }
-    
-    const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) {
-      return res.status(400).json({ error: '用戶名或密碼錯誤' });
-    }
-    
-    // Don't return password hash
-    const { password_hash, ...userWithoutPassword } = user;
-    req.session.user = userWithoutPassword;
-    res.json({ 
-      success: true, 
-      user: userWithoutPassword 
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ success: true });
-  });
-});
-
-app.get('/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.redirect('/');
-  });
-});
-
-// Start server
-if (!process.env.VERCEL) {
-  app.listen(port, () => {
-    console.log(`Ichiban Kuji Raffle Server running on port ${port}`);
-    console.log(`- Public: http://localhost:${port}`);
-    console.log(`- Admin: http://localhost:${port}/admin`);
-    console.log(`- Using PostgreSQL: ${process.env.POSTGRES_URL ? 'Connected to Vercel Postgres' : 'Local database'}`);
-  });
-}
-
-module.exports = app;
+  } catch (err)
