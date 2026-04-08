@@ -1190,7 +1190,7 @@ app.post('/api/admin/raffles/:id/generate-codes', requireAdmin, async (req, res)
       const insertResult = await dbQuery(
         `
           INSERT INTO verification_codes (raffle_id, code, prize_id, assigned_user_id, assigned_at, assigned_by)
-          VALUES ($1, $2, $3, $4, CASE WHEN $4 IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END, $5)
+          VALUES ($1, $2, $3, $4::INTEGER, CASE WHEN $4 IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END, $5)
           RETURNING code
         `,
         [raffleId, code, picked.id, assignedUserId, req.session.user.id],
