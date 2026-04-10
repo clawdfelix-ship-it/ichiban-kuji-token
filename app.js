@@ -970,6 +970,9 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
 // ===== Admin Routes =====
 
 // Upload image endpoint for admin (cover images)
+// Note: On Vercel serverless, filesystem is read-only at runtime
+// So this only works when uploading from local development -> commit image to git -> deploy
+// If you get EROFS error on Vercel, just paste the image URL manually from Imgur etc.
 app.post('/api/admin/upload-image', requireAdmin, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
@@ -982,18 +985,23 @@ app.post('/api/admin/upload-image', requireAdmin, upload.single('image'), async 
     const filename = 'cover-' + uniqueSuffix + ext;
     const fullPath = path.join(uploadDir, filename);
     
-    // Write the buffer from memory storage to disk
-    // This only works locally after deployment, you need to git commit the uploaded image
-    // Vercel will then serve it from CDN
-    fs.writeFileSync(fullPath, req.file.buffer);
-    
-    // Return the URL for the uploaded image
-    const imageUrl = `/uploads/${filename}`;
-    res.json({ 
-      success: true, 
-      url: imageUrl,
-      filename: filename
-    });
+    // Try to write the file
+    // On Vercel this will fail with EROFS (read-only), so we give a helpful error
+    try {
+      fs.writeFileSync(fullPath, req.file.buffer);
+      // Success - return URL
+      const imageUrl = `/uploads/${filename}`;
+      res.json({ 
+        success: true, 
+        url: imageUrl,
+        filename: filename
+      });
+    } catch (writeErr) {
+      // Write failed - likely Vercel read-only filesystem
+      res.status(500).json({ 
+        error: 'Vercel 服務器文件系統只讀，無法保存文件。請將圖片上傳到圖床（Imgur 等），然後手動粘帖 URL 到輸入框。' 
+      });
+    }
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ error: err.message || '上傳失敗' });

@@ -456,7 +456,11 @@ function initCreateRafflePage() {
         uploadStatus.textContent = '✅ 上傳成功！URL 已自動填充';
         uploadStatus.style.color = '#28a745';
       } catch (err) {
-        uploadStatus.textContent = '❌ 上傳失敗: ' + err.message;
+        let msg = err.message;
+        if (msg.includes('EROFS') || msg.includes('read-only')) {
+          msg = 'Vercel 服務器文件系統只讀，無法保存文件。\n請將圖片上傳到免費圖床（Imgur、Discord 等），然後手動粘帖 URL 到上方輸入框。';
+        }
+        uploadStatus.textContent = '❌ 上傳失敗: ' + msg;
         uploadStatus.style.color = '#dc3545';
       } finally {
         uploadCoverBtn.disabled = false;
