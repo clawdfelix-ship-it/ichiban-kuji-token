@@ -1282,10 +1282,12 @@ app.get('/api/my/entries', requireAuth, async (req, res) => {
              r.title as raffle_title, 
              CASE WHEN p.tier IN ('A','B','C','D','E','F','G','H') THEN p.name ELSE '親筆簽名拍立得' END as prize_name,
              p.tier as prize_tier, 
-             p.is_final as prize_is_final
+             p.is_final as prize_is_final,
+             vc.code as verification_code
       FROM entries e
       JOIN raffles r ON e.raffle_id = r.id
       LEFT JOIN prizes p ON e.prize_id = p.id
+      LEFT JOIN verification_codes vc ON e.verification_code_id = vc.id
       WHERE e.user_id = $1
       ORDER BY e.drawn_at DESC
     `, [userId]);
