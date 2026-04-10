@@ -25,10 +25,9 @@ const pool = new Pool({
 });
 
 // Configure multer for storing uploaded images to public/uploads
+// Directory already exists in git (with .gitkeep), Vercel filesystem is read-only at runtime
+// so we don't need to create it here
 const uploadDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
