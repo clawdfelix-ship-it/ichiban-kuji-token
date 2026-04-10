@@ -487,10 +487,6 @@ function initCreateRafflePage() {
     try {
       const formData = new FormData();
       Object.entries(data).forEach(([k, v]) => formData.append(k, v));
-      const coverFile = coverInput && coverInput.files && coverInput.files[0];
-      if (coverFile) {
-        formData.append('cover_image', coverFile);
-      }
       const result = await apiRequest('/api/admin/raffles/create', {
         method: 'POST',
         body: formData,
