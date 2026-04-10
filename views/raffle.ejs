@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="本平台提供台灣一番賞代購、代抽、代收與跨境轉送服務，所有抽選行為於台灣完成，香港地區僅提供商品領取與寄送。">
-  <title><%= raffle.title %> - 台灣一番賞委託代抽</title>
+  <meta name="description" content="本平台提供台灣一番賞代購、開盒、代收與跨境轉送服務，所有開盒行為於台灣完成，香港地區僅提供商品領取。限18+使用。">
+  <title><%= raffle.title %> - 台灣一番賞委託開盒</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -34,24 +34,24 @@
   <main class="container">
     <% if (remainingCount <= 0) { %>
       <div class="alert warning">
-        <strong>此代抽服務已完結</strong>，所有項目已被預定。
+        <strong>此服務已完結</strong>，所有盒子已被預定。
       </div>
     <% } %>
 
     <!-- Entry Form -->
     <% if (remainingCount > 0 && raffle.status === 'active') { %>
       <section class="entry-section">
-        <h2>委託代抽</h2>
+        <h2>委託開盒</h2>
 
-        <div class="legal-notice" style="background: #e7f3ff; border: 1px solid #b6d4fe; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+        <div class="legal-notice" style="background: #e7f3ff; border: 1px solid #b6d4fe; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
           <p style="margin: 0; color: #084298; font-size: 14px; line-height: 1.5;">
-            <strong>付款說明：</strong>付款即委託本站參與台灣一番賞抽選，費用含代抽、物流及處理成本。抽選結果依台灣官方公佈，本站不干涉結果。
+            <strong>服務流程：</strong>FPS 付款 → 管理員發送驗證碼 → 輸入驗證碼提交委託 → 系統隨機開盒 → 商品寄港後通知領取
           </p>
         </div>
 
         <div class="payment-alert">
-          <p>🔒 <strong>需要驗證碼才能委託代抽</strong></p>
-          <p>請先付款給管理員，獲得驗證碼後輸入下方完成委託</p>
+          <p>🔒 <strong>需要驗證碼才能提交委託</strong></p>
+          <p>請先付款給管理員，獲得驗證碼後輸入下方</p>
           <div style="margin-top: 12px;">
             <a class="btn btn-secondary btn-sm" target="_blank" rel="noopener" href="https://wa.me/85295713359?text=我要預約一番賞代抽">香港客服</a>
             <a class="btn btn-secondary btn-sm" target="_blank" rel="noopener" href="https://wa.me/85295713359?text=我要預約一番賞代抽">台灣客服</a>
@@ -60,7 +60,7 @@
         <div style="margin-bottom: 20px;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
             <input type="checkbox" id="batchModeToggle">
-            <span>啟用批量代抽模式（一次輸入多個驗證碼）</span>
+            <span>啟用批量委託模式（一次輸入多個驗證碼）</span>
           </label>
         </div>
 
@@ -68,7 +68,7 @@
         <div style="margin-bottom: 20px; padding: 12px; background: #f8f9fa; border-radius: 6px;">
           <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
             <input type="checkbox" id="ageConfirmation" required style="margin-top: 3px;">
-            <span style="font-size: 14px; line-height: 1.4;">我確認本人已年滿18歲，並了解本服務僅為台灣一番賞代抽委託，所有抽選行為均於台灣完成</span>
+            <span style="font-size: 14px; line-height: 1.4;">我確認本人已年滿18歲，並了解本服務僅為台灣一番賞開盒委託，所有開盒行為均於台灣完成</span>
           </label>
         </div>
 
@@ -192,15 +192,9 @@
 
   <footer>
     <div class="container">
-      <div class="legal-footer" style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin-bottom: 16px; text-align: left; font-size: 13px; line-height: 1.6; color: #495057;">
+      <div class="legal-footer" style="background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: left; font-size: 12px; line-height: 1.6; color: #495057;">
         <strong>【服務聲明】</strong><br>
-        <ol style="margin: 8px 0 0 20px; padding: 0;">
-          <li>本平台僅提供日本／台灣一番賞商品之代購及代抽服務。</li>
-          <li>所有抽選行為及相關交易均於海外（台灣）由當地合作單位完成，香港僅作為資訊展示及代購安排之平台，不涉及任何抽獎、博彩或機會遊戲活動之經營或操作。</li>
-          <li>由於相關抽選活動並非於香港進行，本平台並不構成香港法例下之獎券、抽獎或賭博業務。</li>
-          <li>用戶於下單時，即表示已年滿18歲，明白及同意抽選行為於海外進行，接受抽選結果之隨機性及不可預測性。</li>
-          <li>所有商品內容、款式及中獎機率，均以當地官方公佈為準。基於抽選性質，所有訂單一經確認恕不接受退款或更換。</li>
-        </ol>
+        本平台僅提供台灣一番賞委託開盒服務，所有開盒行為均於台灣完成，香港僅提供商品代收與領取。不涉及香港境內任何博彩或抽獎活動。未滿18歲禁止使用。一經開盒恕不接受退款或更換。
       </div>
       <p>&copy; <%= new Date().getFullYear() %> Ichiban Kuji Proxy Service</p>
       <p style="margin-top: 8px; opacity: 0.7;">Powered by TMA台灣分部-未來飛翔</p>

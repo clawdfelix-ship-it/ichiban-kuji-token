@@ -532,17 +532,18 @@ header .btn-outline:hover {
 .raffle-cover {
   width: 100%;
   height: 160px;
-  object-fit: cover;
+  object-fit: contain;
+  background-color: #ffffff;
   border-radius: var(--border-radius);
   margin-bottom: 14px;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  background: #ffffff;
 }
 
 .raffle-header-cover {
   width: 100%;
   height: 240px;
-  object-fit: cover;
+  object-fit: contain;
+  background-color: #ffffff;
   border-radius: var(--border-radius);
   margin: 10px 0 14px;
   border: 1px solid rgba(255, 255, 255, 0.2);

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="本平台提供台灣一番賞代購、代抽、代收與跨境轉送服務，所有抽選行為於台灣完成，香港地區僅提供商品領取與寄送。">
-  <title>台灣一番賞委託代抽 - Ichiban Kuji Proxy Service</title>
+  <title>台灣一番賞委託開盒 - Ichiban Kuji Proxy Service</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -16,8 +16,8 @@
           <img src="/img/mirai-3.png" alt="TMA台灣分部-未來飛翔">
         </a>
         <div class="header-text">
-          <h1>台灣一番賞委託代抽</h1>
-          <p>代購代抽，公平公開</p>
+          <h1>台灣一番賞委託開盒</h1>
+          <p>公平隨機，代購代收</p>
         </div>
         <div class="header-buttons">
           <% if (currentUser) { %>
@@ -37,13 +37,24 @@
   </header>
 
   <main class="container">
-    <div class="legal-notice" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-      <p style="margin: 0; color: #856404; font-size: 15px; line-height: 1.5;">
-        <strong>重要聲明：</strong>本平台僅提供日本／台灣一番賞商品之代購及代抽服務，所有抽選行為及相關交易均於台灣完成。香港僅作為資訊展示及代購安排平台，不經營任何抽獎、博彩或機會遊戲活動。未滿18歲禁止使用本服務。
+    <div class="legal-notice" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+      <p style="margin: 0; color: #856404; font-size: 14px; line-height: 1.6;">
+        <strong>重要聲明：</strong>本平台僅提供台灣委託開盒服務，香港只負責商品領取。<br>限 18+ 使用，一經開盒恕不退款。
       </p>
     </div>
 
-    <h2>進行中的台灣一番賞代抽服務</h2>
+    <div class="process-guide" style="background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+      <h4 style="margin: 0 0 8px 0; font-size: 15px;">服務流程</h4>
+      <ol style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8;">
+        <li>FPS 付款</li>
+        <li>管理員發送驗證碼</li>
+        <li>輸入驗證碼提交委託</li>
+        <li>系統隨機開盒</li>
+        <li>商品寄港後通知領取</li>
+      </ol>
+    </div>
+
+    <h2>進行中的台灣委託開盒服務</h2>
     
     <% if (raffles.length === 0) { %>
       <div class="empty-state">
@@ -66,7 +77,7 @@
                 <strong>剩餘</strong>: <%= raffle.remaining_boxes %> / <%= raffle.total_boxes %>
               </span>
             </div>
-            <a href="/raffle/<%= raffle.id %>" class="btn btn-primary">立即委託代抽</a>
+            <a href="/raffle/<%= raffle.id %>" class="btn btn-primary">立即委託開盒</a>
           </div>
         <% }) %>
       </div>
@@ -75,15 +86,9 @@
 
   <footer>
     <div class="container">
-      <div class="legal-footer" style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin-bottom: 16px; text-align: left; font-size: 13px; line-height: 1.6; color: #495057;">
+      <div class="legal-footer" style="background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 12px; text-align: left; font-size: 12px; line-height: 1.6; color: #495057;">
         <strong>【服務聲明】</strong><br>
-        <ol style="margin: 8px 0 0 20px; padding: 0;">
-          <li>本平台僅提供日本／台灣一番賞商品之代購及代抽服務。</li>
-          <li>所有抽選行為及相關交易均於海外（台灣）由當地合作單位完成，香港僅作為資訊展示及代購安排之平台，不涉及任何抽獎、博彩或機會遊戲活動之經營或操作。</li>
-          <li>由於相關抽選活動並非於香港進行，本平台並不構成香港法例下之獎券、抽獎或賭博業務。</li>
-          <li>用戶於下單時，即表示已年滿18歲，明白及同意抽選行為於海外進行，接受抽選結果之隨機性及不可預測性。</li>
-          <li>所有商品內容、款式及中獎機率，均以當地官方公佈為準。基於抽選性質，所有訂單一經確認恕不接受退款或更換。</li>
-        </ol>
+        本平台僅提供台灣一番賞委託開盒服務，所有開盒行為均於台灣完成，香港僅提供商品代收與領取。不涉及香港境內任何博彩或抽獎活動。未滿18歲禁止使用。一經開盒恕不接受退款或更換。
       </div>
       <p>&copy; <%= new Date().getFullYear() %> Ichiban Kuji Proxy Service</p>
       <p style="margin-top: 8px; opacity: 0.7;">
