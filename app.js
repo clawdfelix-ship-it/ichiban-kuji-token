@@ -219,6 +219,7 @@ async function initDatabase() {
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP NULL');
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_by INTEGER NULL');
     await dbQuery('ALTER TABLE raffles ADD COLUMN IF NOT EXISTS cover_image TEXT NULL');
+    await dbQuery('ALTER TABLE entries ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMP NULL');
 
     const adminResult = await dbQuery('SELECT COUNT(*) as count FROM users WHERE is_admin = 1');
     const hasAdmin = adminResult.rows[0]?.count !== '0';
