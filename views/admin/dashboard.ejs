@@ -66,6 +66,8 @@
                       已關閉
                     <% } else if (raffle.status === 'completed') { %>
                       已完成
+                    <% } else if (raffle.status === 'draft') { %>
+                      草稿
                     <% } %>
                   </span>
                 </td>
@@ -79,7 +81,7 @@
                     <button class="btn btn-sm btn-warning change-status" 
                             data-id="<%= raffle.id %>" 
                             data-status="closed">關閉</button>
-                  <% } else if (raffle.status === 'closed') { %>
+                  <% } else if (raffle.status === 'closed' || raffle.status === 'draft') { %>
                     <button class="btn btn-sm btn-success change-status"
                             data-id="<%= raffle.id %>"
                             data-status="active">開啟</button>
