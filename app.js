@@ -47,7 +47,8 @@ function dbQuery(sql, params = [], client = pool) {
 }
 
 // Multer middleware for mixed content-type support
-const anyMulter = upload.none();
+// upload.any() allows file uploads, we just ignore files for now (text fields are parsed)
+const anyMulter = upload.any();
 const multerUnlessJson = (req, res, next) => {
   const contentType = req.get('Content-Type') || '';
   if (contentType.includes('multipart/form-data')) {
