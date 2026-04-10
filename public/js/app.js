@@ -214,7 +214,7 @@ function initRafflePage(raffleId) {
             ? 'background: #f0fdf4; color: #166534;'
             : 'background: #fef2f2; color: #991b1b;';
           const resultText = item.success
-            ? `✅ ${item.item.name}${item.item.is_final ? ' (最終賞)' : ''}`
+            ? `✅ ${item.prize.name}${item.prize.is_final ? ' (最終賞)' : ''}`
             : `❌ ${item.error}`;
 
           html += `
