@@ -1075,6 +1075,41 @@ app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) =
   }
 });
 
+// Reset all raffles, entries, codes, winners (dangerous - for admin use only)
+app.post('/api/admin/reset', requireAdmin, async (req, res) => {
+  try {
+    if (!req.session.user || !req.session.user.is_admin) {
+      return res.status(403).json({ error: '需要管理員權限' });
+    }
+
+    const { token, confirm } = req.body;
+    const expectedToken = process.env.ADMIN_RESET_TOKEN;
+
+    if (!expectedToken || token !== expectedToken) {
+      return res.status(403).json({ error: 'Invalid reset token' });
+    }
+
+    if (confirm !== 'RESET') {
+      return res.status(400).json({ error: 'Must confirm with RESET' });
+    }
+
+    // Delete in order of foreign keys
+    await dbQuery('DELETE FROM winners');
+    await dbQuery('DELETE FROM entries');
+    await dbQuery('DELETE FROM verification_codes');
+    await dbQuery('DELETE FROM prizes');
+    await dbQuery('DELETE FROM raffles');
+    
+    // Do NOT delete users - keep admin account
+    // await dbQuery('DELETE FROM users');
+
+    res.json({ success: true, message: 'All raffles, prizes, codes, entries, winners deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
 // Generate verification codes (admin only) - this is where we deduct stock immediately when generating
 app.post('/api/admin/raffles/:id/generate-codes', requireAdmin, async (req, res) => {
   const client = await pool.connect();
