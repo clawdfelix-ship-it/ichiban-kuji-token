@@ -961,9 +961,8 @@ app.get('/admin/create', requireAdmin, (req, res) => {
 });
 
 // Create new raffle API
-// Note: Frontend sends FormData for optional image upload, so we need to get fields from req.body
-// express.urlencoded should already parse it
-app.post('/api/admin/raffles/create', requireAdmin, async (req, res) => {
+// Note: Frontend sends FormData for optional image upload, need multer to parse multipart
+app.post('/api/admin/raffles/create', requireAdmin, upload.none(), async (req, res) => {
   try {
     if (!req.session.user || !req.session.user.is_admin) {
       return res.status(403).json({ error: '需要管理員權限' });
