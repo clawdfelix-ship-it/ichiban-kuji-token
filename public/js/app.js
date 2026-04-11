@@ -537,7 +537,7 @@ function initCreateRafflePage() {
       { tier: 'D', name: '見面會 - 15秒video券', description: '', total_count: 6, is_final: false },
       { tier: 'E', name: '見面會 - 簽名券', description: '', total_count: 8, is_final: false },
       { tier: 'F', name: '見面會 - 合照券', description: '', total_count: 18, is_final: false },
-      { tier: 'G', name: '簽名拍立得', description: '', total_count: 40, is_final: false },
+      { tier: 'G', name: '簽名拍立得', description: '', total_count: 39, is_final: false },
       { tier: 'LAST', name: '迪士尼入場券', description: '', total_count: 1, is_final: true, pool_number: 1 }
     ];
 
