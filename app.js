@@ -1341,22 +1341,53 @@ app.put('/api/admin/raffles/:raffleId/items/:itemId', requireAdmin, multerUnless
     const raffleId = parseInt(req.params.raffleId);
     const itemId = parseInt(req.params.itemId);
     const { tier, name, description, image_url, total_count, is_final, pool_number } = req.body;
+    const newTotalCount = parseInt(total_count, 10);
 
-    await dbQuery(`
-      UPDATE prizes
-      SET tier = $1, name = $2, description = $3, image_url = $4, total_count = $5, is_final = $6, pool_number = $7
-      WHERE id = $8 AND raffle_id = $9
-    `, [
-      tier,
-      name,
-      description || '',
-      image_url || null,
-      parseInt(total_count, 10),
-      is_final ? 1 : 0,
-      pool_number || 1,
-      itemId,
-      raffleId
-    ]);
+    // Get existing item to check if remaining == total (no sold yet)
+    const existing = await dbQuery('SELECT total_count, remaining_count FROM prizes WHERE id = $1 AND raffle_id = $2', [itemId, raffleId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: '商品不存在' });
+    }
+    const oldItem = existing.rows[0];
+
+    // If remaining count == old total count (nothing sold yet), automatically sync remaining to new total
+    let updateRemaining = '';
+    let params;
+    if (oldItem.remaining_count === oldItem.total_count) {
+      // Auto-update remaining to match new total
+      await dbQuery(`
+        UPDATE prizes
+        SET tier = $1, name = $2, description = $3, image_url = $4, total_count = $5, remaining_count = $5, is_final = $6, pool_number = $7
+        WHERE id = $8 AND raffle_id = $9
+      `, [
+        tier,
+        name,
+        description || '',
+        image_url || null,
+        newTotalCount,
+        is_final ? 1 : 0,
+        pool_number || 1,
+        itemId,
+        raffleId
+      ]);
+    } else {
+      // Don't touch remaining count - user has already sold some items
+      await dbQuery(`
+        UPDATE prizes
+        SET tier = $1, name = $2, description = $3, image_url = $4, total_count = $5, is_final = $6, pool_number = $7
+        WHERE id = $8 AND raffle_id = $9
+      `, [
+        tier,
+        name,
+        description || '',
+        image_url || null,
+        newTotalCount,
+        is_final ? 1 : 0,
+        pool_number || 1,
+        itemId,
+        raffleId
+      ]);
+    }
 
     res.json({ success: true });
   } catch (err) {
