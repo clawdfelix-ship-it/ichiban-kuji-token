@@ -115,35 +115,6 @@ function formatMoney(value, maxFractionDigits = 2) {
   });
 }
 
-app.use(
-  session({
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isVercel
-    },
-    ...(connectionString
-      ? {
-          store: new pgSession({
-            pool,
-            createTableIfMissing: true
-          })
-        }
-      : {})
-  })
-);
-
-app.use((req, res, next) => {
-  res.locals.currentUser = req.session.user || null;
-  res.locals.isAdmin = !!req.session.user?.is_admin;
-  res.locals.twdPerHkd = twdPerHkd;
-  res.locals.formatMoney = formatMoney;
-  next();
-});
-
 function requireAuth(req, res, next) {
   if (!req.session.user) {
     return res.redirect('/login');
@@ -312,6 +283,36 @@ app.use(async (req, res, next) => {
     }
     return res.status(500).send('Database init failed');
   }
+});
+
+// Session must come after database init because it depends on pgSession with the connected pool
+app.use(
+  session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isVercel
+    },
+    ...(connectionString
+      ? {
+          store: new pgSession({
+            pool,
+            createTableIfMissing: true
+          })
+        }
+      : {})
+  })
+);
+
+app.use((req, res, next) => {
+  res.locals.currentUser = req.session.user || null;
+  res.locals.isAdmin = !!req.session.user?.is_admin;
+  res.locals.twdPerHkd = twdPerHkd;
+  res.locals.formatMoney = formatMoney;
+  next();
 });
 
 // ===== Auth Routes (Public) =====
