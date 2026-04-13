@@ -1019,7 +1019,10 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
 
 // Admin login
 app.get('/admin/login', (req, res) => {
-  res.render('admin-login');
+  if (req.session.user?.is_admin) {
+    return res.redirect('/admin');
+  }
+  res.render('login', { adminMode: true });
 });
 
 app.post('/api/admin/login', async (req, res) => {
