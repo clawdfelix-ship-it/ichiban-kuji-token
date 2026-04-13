@@ -24,6 +24,11 @@ async function apiRequest(url, options = {}) {
   }
 
   const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    throw new Error(`Server response is not JSON (${response.status}): ${text.slice(0, 120)}`);
+  }
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || '發生錯誤');

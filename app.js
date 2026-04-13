@@ -153,6 +153,16 @@ function requireAuthApi(req, res, next) {
   next();
 }
 
+function requireAdminApi(req, res, next) {
+  if (!req.session.user) {
+    return res.status(401).json({ error: '請先以管理員登入' });
+  }
+  if (!req.session.user.is_admin) {
+    return res.status(403).json({ error: '需要管理員權限' });
+  }
+  next();
+}
+
 function normalizeSessionUser(userRow) {
   if (!userRow) return null;
   return {
@@ -1434,7 +1444,7 @@ app.get('/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
   res.render('admin/codes', { raffleId, title: raffleResult.rows[0].title });
 });
 
-app.post('/api/admin/raffles/:id/reconcile-boxes', requireAdmin, async (req, res) => {
+app.post('/api/admin/raffles/:id/reconcile-boxes', requireAdminApi, async (req, res) => {
   const client = await pool.connect();
   try {
     const raffleId = parseInt(req.params.id);
@@ -1481,7 +1491,7 @@ app.post('/api/admin/raffles/:id/reconcile-boxes', requireAdmin, async (req, res
 });
 
 // Create new raffle
-app.post('/api/admin/raffles', requireAdmin, multerUnlessJson, async (req, res) => {
+app.post('/api/admin/raffles', requireAdminApi, multerUnlessJson, async (req, res) => {
   try {
     const {
       title,
@@ -1515,7 +1525,7 @@ app.post('/api/admin/raffles', requireAdmin, multerUnlessJson, async (req, res) 
 });
 
 // Add prize to raffle
-app.post('/api/admin/raffles/:id/prizes', requireAdmin, async (req, res) => {
+app.post('/api/admin/raffles/:id/prizes', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     const { tier, name, description, total_count, is_final, pool_number } = req.body;
@@ -1543,7 +1553,7 @@ app.post('/api/admin/raffles/:id/prizes', requireAdmin, async (req, res) => {
 });
 
 // Update prize
-app.patch('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdmin, async (req, res) => {
+app.patch('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdminApi, async (req, res) => {
   try {
     const { raffleId, prizeId } = req.params;
     const { tier, name, description, total_count, remaining_count, is_final, pool_number } = req.body;
@@ -1575,7 +1585,7 @@ app.patch('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdmin, async (r
 });
 
 // Delete prize
-app.delete('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdmin, async (req, res) => {
+app.delete('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdminApi, async (req, res) => {
   try {
     const { raffleId, prizeId } = req.params;
     await dbQuery('DELETE FROM prizes WHERE id = $1 AND raffle_id = $2', [parseInt(prizeId), parseInt(raffleId)]);
@@ -1587,7 +1597,7 @@ app.delete('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdmin, async (
 });
 
 // Generate verification codes for pre-allocation
-app.post('/api/admin/raffles/:id/generate-codes', requireAdmin, async (req, res) => {
+app.post('/api/admin/raffles/:id/generate-codes', requireAdminApi, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1669,7 +1679,7 @@ app.post('/api/admin/raffles/:id/generate-codes', requireAdmin, async (req, res)
 });
 
 // List verification codes
-app.get('/api/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
+app.get('/api/admin/raffles/:id/codes', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     const result = await dbQuery(
@@ -1697,7 +1707,7 @@ app.get('/api/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
 });
 
 // Upload cover image
-app.post('/api/admin/raffles/:id/upload-cover', requireAdmin, upload.single('image'), async (req, res) => {
+app.post('/api/admin/raffles/:id/upload-cover', requireAdminApi, upload.single('image'), async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     if (!req.file) {
@@ -1722,7 +1732,7 @@ app.post('/api/admin/raffles/:id/upload-cover', requireAdmin, upload.single('ima
 });
 
 // Get entries for a raffle
-app.get('/api/admin/raffles/:id/entries', requireAdmin, async (req, res) => {
+app.get('/api/admin/raffles/:id/entries', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     const result = await dbQuery(
@@ -1743,7 +1753,7 @@ app.get('/api/admin/raffles/:id/entries', requireAdmin, async (req, res) => {
 });
 
 // Update raffle status
-app.patch('/api/admin/raffles/:id/status', requireAdmin, async (req, res) => {
+app.patch('/api/admin/raffles/:id/status', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     const { status } = req.body;
@@ -1795,7 +1805,7 @@ app.get('/api/my/entries', requireAuth, async (req, res) => {
 });
 
 // List all raffles for admin
-app.get('/api/admin/raffles', requireAdmin, async (req, res) => {
+app.get('/api/admin/raffles', requireAdminApi, async (req, res) => {
   try {
     const result = await dbQuery(`
       SELECT * FROM raffles ORDER BY created_at DESC
@@ -1808,7 +1818,7 @@ app.get('/api/admin/raffles', requireAdmin, async (req, res) => {
 });
 
 // Update raffle
-app.patch('/api/admin/raffles/:id', requireAdmin, async (req, res) => {
+app.patch('/api/admin/raffles/:id', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
     const { title, description, total_boxes, price_per_box, status, num_pools } = req.body;
