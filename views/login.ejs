@@ -78,7 +78,7 @@
           });
           
           alert('登入成功！');
-          if (isAdminMode && !result.user.is_admin) {
+          if (isAdminMode && !result.user?.is_admin) {
             alert('此帳號不是管理員');
             return;
           }

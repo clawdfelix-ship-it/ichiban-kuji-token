@@ -153,6 +153,17 @@ function requireAuthApi(req, res, next) {
   next();
 }
 
+function normalizeSessionUser(userRow) {
+  if (!userRow) return null;
+  return {
+    id: userRow.id,
+    username: userRow.username,
+    contact: userRow.contact ?? null,
+    is_admin: !!userRow.is_admin,
+    created_at: userRow.created_at
+  };
+}
+
 // Create tables if not exists
 async function initDatabase() {
   try {
@@ -548,7 +559,7 @@ app.post('/api/auth/register', async (req, res) => {
       RETURNING id, username, contact, is_admin, created_at
     `, [username, passwordHash, contact || null]);
 
-    const user = result.rows[0];
+    const user = normalizeSessionUser(result.rows[0]);
     req.session.user = user;
     res.json({ success: true, user });
   } catch (err) {
@@ -574,8 +585,9 @@ app.post('/api/auth/login', async (req, res) => {
     if (!match) {
       return res.status(401).json({ error: '用戶名或密碼錯誤' });
     }
-    req.session.user = user;
-    res.json({ success: true, user });
+    const sessionUser = normalizeSessionUser(user);
+    req.session.user = sessionUser;
+    res.json({ success: true, user: sessionUser });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -1367,8 +1379,9 @@ app.post('/api/admin/login', async (req, res) => {
     if (!match) {
       return res.status(401).json({ error: '用戶名或密碼錯誤' });
     }
-    req.session.user = user;
-    res.json({ success: true });
+    const sessionUser = normalizeSessionUser(user);
+    req.session.user = sessionUser;
+    res.json({ success: true, user: sessionUser });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
