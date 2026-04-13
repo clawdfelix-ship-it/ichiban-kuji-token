@@ -1524,6 +1524,44 @@ app.post('/api/admin/raffles', requireAdminApi, multerUnlessJson, async (req, re
   }
 });
 
+app.post('/api/admin/raffles/create', requireAdminApi, multerUnlessJson, async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      type = 'ichiban',
+      total_boxes,
+      price_per_box,
+      num_pools = 1,
+      cover_image_url
+    } = req.body;
+
+    const result = await dbQuery(
+      `
+        INSERT INTO raffles (title, description, type, total_boxes, price_per_box, remaining_boxes, num_pools, created_by, cover_image)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+      `,
+      [
+        title,
+        description || null,
+        type,
+        parseInt(total_boxes),
+        parseFloat(price_per_box),
+        parseInt(total_boxes),
+        parseInt(num_pools),
+        req.session.user.id,
+        cover_image_url || null
+      ]
+    );
+
+    res.json({ success: true, raffleId: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Add prize to raffle
 app.post('/api/admin/raffles/:id/prizes', requireAdminApi, async (req, res) => {
   try {
@@ -1546,6 +1584,81 @@ app.post('/api/admin/raffles/:id/prizes', requireAdminApi, async (req, res) => {
     ]);
 
     res.json({ success: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/admin/raffles/:id/items/add', requireAdminApi, async (req, res) => {
+  try {
+    const raffleId = parseInt(req.params.id);
+    const { tier, name, description, total_count, is_final, pool_number, image_url } = req.body;
+
+    const result = await dbQuery(
+      `
+        INSERT INTO prizes (raffle_id, tier, name, description, total_count, remaining_count, is_final, pool_number, image_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+      `,
+      [
+        raffleId,
+        tier,
+        name,
+        description || null,
+        parseInt(total_count),
+        parseInt(total_count),
+        !!is_final,
+        pool_number ? parseInt(pool_number) : null,
+        image_url || null
+      ]
+    );
+
+    res.json({ success: true, itemId: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/admin/raffles/:raffleId/items/:itemId', requireAdminApi, async (req, res) => {
+  try {
+    const raffleId = parseInt(req.params.raffleId);
+    const prizeId = parseInt(req.params.itemId);
+    const { tier, name, description, total_count, is_final, pool_number, image_url } = req.body;
+
+    await dbQuery(
+      `
+        UPDATE prizes
+          SET tier = $1, name = $2, description = $3, total_count = $4, is_final = $5, pool_number = $6, image_url = $7
+          WHERE id = $8 AND raffle_id = $9
+      `,
+      [
+        tier,
+        name,
+        description || null,
+        parseInt(total_count),
+        !!is_final,
+        pool_number ? parseInt(pool_number) : null,
+        image_url || null,
+        prizeId,
+        raffleId
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.delete('/api/admin/raffles/:raffleId/items/:itemId', requireAdminApi, async (req, res) => {
+  try {
+    const raffleId = parseInt(req.params.raffleId);
+    const prizeId = parseInt(req.params.itemId);
+    await dbQuery('DELETE FROM prizes WHERE id = $1 AND raffle_id = $2', [prizeId, raffleId]);
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -1731,6 +1844,27 @@ app.post('/api/admin/raffles/:id/upload-cover', requireAdminApi, upload.single('
   }
 });
 
+app.post('/api/admin/upload-image', requireAdminApi, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: '沒有上傳文件' });
+    }
+
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const key = `uploads/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
+    try {
+      const blob = await put(key, req.file.buffer, { access: 'public', contentType: req.file.mimetype });
+      return res.json({ success: true, url: blob.url });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'Upload failed' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get entries for a raffle
 app.get('/api/admin/raffles/:id/entries', requireAdminApi, async (req, res) => {
   try {
@@ -1818,16 +1952,52 @@ app.get('/api/admin/raffles', requireAdminApi, async (req, res) => {
 });
 
 // Update raffle
-app.patch('/api/admin/raffles/:id', requireAdminApi, async (req, res) => {
+app.put('/api/admin/raffles/:id/update', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
-    const { title, description, total_boxes, price_per_box, status, num_pools } = req.body;
+    const { title, description, total_boxes, price_per_box, status, num_pools, cover_image } = req.body;
 
     await dbQuery(
       `
         UPDATE raffles
-          SET title = $1, description = $2, total_boxes = $3, price_per_box = $4, status = $5, num_pools = $6
-          WHERE id = $7
+          SET title = $1,
+              description = $2,
+              total_boxes = $3,
+              price_per_box = $4,
+              status = $5,
+              num_pools = $6,
+              cover_image = $7
+          WHERE id = $8
+      `,
+      [
+        title,
+        description || null,
+        parseInt(total_boxes),
+        parseFloat(price_per_box),
+        status,
+        num_pools ? parseInt(num_pools) : 1,
+        cover_image || null,
+        raffleId
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.patch('/api/admin/raffles/:id', requireAdminApi, async (req, res) => {
+  try {
+    const raffleId = parseInt(req.params.id);
+    const { title, description, total_boxes, price_per_box, status, num_pools, cover_image } = req.body;
+
+    await dbQuery(
+      `
+        UPDATE raffles
+          SET title = $1, description = $2, total_boxes = $3, price_per_box = $4, status = $5, num_pools = $6, cover_image = $7
+          WHERE id = $8
       `,
       [
         title,
@@ -1836,6 +2006,7 @@ app.patch('/api/admin/raffles/:id', requireAdminApi, async (req, res) => {
         parseFloat(price_per_box),
         status,
         parseInt(num_pools),
+        cover_image || null,
         raffleId
       ]
     );
