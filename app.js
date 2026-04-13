@@ -366,6 +366,36 @@ const stripeClient = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 const TOKENS_PER_BOX = 299;
 
+// Session must come after database init because it depends on pgSession with the connected pool
+app.use(
+  session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isVercel
+    },
+    ...(connectionString
+      ? {
+          store: new pgSession({
+            pool,
+            createTableIfMissing: true
+          })
+        }
+      : {})
+  })
+);
+
+app.use((req, res, next) => {
+  res.locals.currentUser = req.session.user || null;
+  res.locals.isAdmin = !!req.session.user?.is_admin;
+  res.locals.twdPerHkd = twdPerHkd;
+  res.locals.formatMoney = formatMoney;
+  next();
+});
+
 app.get('/api/admin/stripe/debug', requireAdminApi, async (req, res) => {
   const out = {
     stripe: {
@@ -569,36 +599,6 @@ app.post('/api/webhooks/stripe', async (req, res) => {
   }
 
   res.json({ received: true });
-});
-
-// Session must come after database init because it depends on pgSession with the connected pool
-app.use(
-  session({
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isVercel
-    },
-    ...(connectionString
-      ? {
-          store: new pgSession({
-            pool,
-            createTableIfMissing: true
-          })
-        }
-      : {})
-  })
-);
-
-app.use((req, res, next) => {
-  res.locals.currentUser = req.session.user || null;
-  res.locals.isAdmin = !!req.session.user?.is_admin;
-  res.locals.twdPerHkd = twdPerHkd;
-  res.locals.formatMoney = formatMoney;
-  next();
 });
 
 // ===== Auth Routes (Public) =====
