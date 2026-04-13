@@ -7,18 +7,18 @@
 
 /* CSS Variables - Hong Kong Clean Small Business Style */
 :root {
-  --primary-color: #0ea5e9;
-  --primary-dark: #0284c7;
-  --secondary-color: #334155;
-  --success-color: #38bdf8;
-  --warning-color: #7dd3fc;
-  --danger-color: #0369a1;
-  --bg-color: #f3f6fb;
+  --primary-color: #111111;
+  --primary-dark: #000000;
+  --secondary-color: #404040;
+  --success-color: #525252;
+  --warning-color: #737373;
+  --danger-color: #1f1f1f;
+  --bg-color: #f5f5f5;
   --card-bg: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #64748b;
-  --border-color: #e2e8f0;
+  --text-primary: #111111;
+  --text-secondary: #404040;
+  --text-tertiary: #737373;
+  --border-color: #e5e5e5;
   /* Refined shadow system for modern depth */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.12);
   --shadow: 0 3px 6px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
@@ -285,7 +285,7 @@ h3 {
 }
 
 .btn-success:hover {
-  background-color: #0284c7;
+  background-color: #3f3f3f;
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
 }
@@ -301,7 +301,7 @@ h3 {
 }
 
 .btn-warning:hover {
-  background-color: #3b82f6;
+  background-color: #525252;
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
 }
@@ -623,7 +623,7 @@ header .btn-outline:hover {
 
 .prize-card.final-prize {
   border-color: var(--primary-color);
-  background: linear-gradient(135deg, #eef6ff, #ffffff);
+  background: linear-gradient(135deg, #f5f5f5, #ffffff);
 }
 
 .prize-card.final-prize .prize-name {
@@ -651,18 +651,18 @@ header .btn-outline:hover {
   letter-spacing: 0.01em;
 }
 
-.tier-badge.a { background: #1d4ed8; }
-.tier-badge.b { background: #2563eb; }
-.tier-badge.c { background: #3b82f6; }
-.tier-badge.d { background: #60a5fa; }
-.tier-badge.e { background: #0ea5e9; }
-.tier-badge.f { background: #0284c7; }
-.tier-badge.g { background: #334155; }
-.tier-badge.h { background: #64748b; }
-.tier-badge.last { background: #0f172a; }
+.tier-badge.a { background: #111111; }
+.tier-badge.b { background: #1f1f1f; }
+.tier-badge.c { background: #2f2f2f; }
+.tier-badge.d { background: #3f3f3f; }
+.tier-badge.e { background: #525252; }
+.tier-badge.f { background: #666666; }
+.tier-badge.g { background: #404040; }
+.tier-badge.h { background: #525252; }
+.tier-badge.last { background: #000000; }
 
 .final-badge {
-  background: linear-gradient(135deg, #93c5fd, #3b82f6);
+  background: linear-gradient(135deg, #404040, #111111);
   color: white;
   padding: 4px 12px;
   border-radius: 16px;
