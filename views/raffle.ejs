@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="本平台提供台灣一番賞代購、開盒、代收與跨境轉送服務，所有開盒行為於台灣完成，香港地區僅提供商品領取。限18+使用。">
   <title><%= raffle.title %> - 台灣一番賞委託開盒 [TOKEN VERSION]</title>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=token-1">
 </head>
 <body>
   <header>
@@ -228,7 +228,7 @@
 
   <input type="hidden" id="raffleId" value="<%= raffle.id %>">
 
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=token-1"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const raffleId = parseInt(document.getElementById('raffleId').value, 10);
