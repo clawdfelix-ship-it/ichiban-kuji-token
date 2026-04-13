@@ -23,7 +23,7 @@ async function apiRequest(url, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || '發生錯誤');

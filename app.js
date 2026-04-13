@@ -8,6 +8,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { put } = require('@vercel/blob');
+const Stripe = require('stripe');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -89,7 +90,15 @@ const multerUnlessJson = (req, res, next) => {
 // Middleware
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      if (req.originalUrl && req.originalUrl.startsWith('/api/webhooks/stripe')) {
+        req.rawBody = buf;
+      }
+    }
+  })
+);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
@@ -137,6 +146,13 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function requireAuthApi(req, res, next) {
+  if (!req.session.user) {
+    return res.status(401).json({ error: '請先登入' });
+  }
+  next();
+}
+
 // Create tables if not exists
 async function initDatabase() {
   try {
@@ -147,6 +163,7 @@ async function initDatabase() {
         password_hash TEXT,
         contact TEXT NULL,
         is_admin INTEGER DEFAULT 0,
+        token_balance INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -219,15 +236,44 @@ async function initDatabase() {
         assigned_user_id INTEGER NULL,
         assigned_at TIMESTAMP NULL,
         assigned_by INTEGER NULL,
+        purchase_id INTEGER NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(raffle_id) REFERENCES raffles(id),
         FOREIGN KEY(prize_id) REFERENCES prizes(id)
       );
+
+      CREATE TABLE IF NOT EXISTS token_topups (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        provider_ref TEXT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        tokens INTEGER NOT NULL,
+        amount_hkd INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'HKD',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        UNIQUE(provider, provider_ref),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS token_ledger (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        delta_tokens INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        ref_type TEXT NULL,
+        ref_id INTEGER NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
     `);
 
+    await dbQuery('ALTER TABLE users ADD COLUMN IF NOT EXISTS token_balance INTEGER DEFAULT 0');
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_user_id INTEGER NULL');
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP NULL');
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_by INTEGER NULL');
+    await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS purchase_id INTEGER NULL');
     await dbQuery('ALTER TABLE raffles ADD COLUMN IF NOT EXISTS cover_image TEXT NULL');
     await dbQuery('ALTER TABLE entries ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMP NULL');
 
@@ -291,6 +337,141 @@ app.use(async (req, res, next) => {
     }
     return res.status(500).send('Database init failed');
   }
+});
+
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET || '';
+const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+const stripeClient = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+
+const TOKENS_PER_BOX = 299;
+
+app.get('/api/wallet/balance', requireAuthApi, async (req, res) => {
+  const result = await dbQuery('SELECT token_balance FROM users WHERE id = $1', [req.session.user.id]);
+  res.json({ token_balance: result.rows[0]?.token_balance || 0 });
+});
+
+app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
+  if (!stripeClient) {
+    return res.status(500).json({ error: 'Stripe 未設定' });
+  }
+  const tokens = parseInt(req.body.tokens, 10);
+  if (!Number.isFinite(tokens) || tokens <= 0 || tokens % TOKENS_PER_BOX !== 0) {
+    return res.status(400).json({ error: `充值 tokens 必須係 ${TOKENS_PER_BOX} 嘅倍數` });
+  }
+  if (tokens > TOKENS_PER_BOX * 200) {
+    return res.status(400).json({ error: '單次充值太大' });
+  }
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  const topupResult = await dbQuery(
+    `
+      INSERT INTO token_topups (user_id, provider, provider_ref, status, tokens, amount_hkd, currency)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    `,
+    [req.session.user.id, 'stripe', null, 'pending', tokens, tokens, 'HKD']
+  );
+  const topupId = topupResult.rows[0].id;
+
+  const session = await stripeClient.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: 'hkd',
+          unit_amount: tokens * 100,
+          product_data: {
+            name: `充值 Tokens ${tokens}`,
+          }
+        }
+      }
+    ],
+    metadata: {
+      topup_id: String(topupId),
+      user_id: String(req.session.user.id),
+      tokens: String(tokens)
+    },
+    success_url: `${baseUrl}/my?topup=success`,
+    cancel_url: `${baseUrl}/my?topup=cancel`
+  });
+
+  await dbQuery('UPDATE token_topups SET provider_ref = $1 WHERE id = $2', [session.id, topupId]);
+  res.json({ url: session.url });
+});
+
+app.post('/api/webhooks/stripe', async (req, res) => {
+  if (!stripeClient || !stripeWebhookSecret) {
+    return res.status(500).send('Stripe not configured');
+  }
+  const sig = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = stripeClient.webhooks.constructEvent(req.rawBody, sig, stripeWebhookSecret);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const topupId = parseInt(session?.metadata?.topup_id, 10);
+    const userId = parseInt(session?.metadata?.user_id, 10);
+    const tokens = parseInt(session?.metadata?.tokens, 10);
+
+    if (topupId && userId && tokens) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await dbQuery(
+          `SELECT id, status FROM token_topups WHERE id = $1 FOR UPDATE`,
+          [topupId],
+          client
+        );
+        if (locked.rows.length === 0) {
+          await client.query('ROLLBACK');
+          client.release();
+          return res.status(200).json({ received: true });
+        }
+        if (locked.rows[0].status === 'paid') {
+          await client.query('COMMIT');
+          client.release();
+          return res.status(200).json({ received: true });
+        }
+
+        await dbQuery(
+          `UPDATE token_topups SET status = 'paid', paid_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [topupId],
+          client
+        );
+
+        await dbQuery(
+          `UPDATE users SET token_balance = token_balance + $1 WHERE id = $2`,
+          [tokens, userId],
+          client
+        );
+
+        await dbQuery(
+          `INSERT INTO token_ledger (user_id, delta_tokens, reason, ref_type, ref_id) VALUES ($1, $2, $3, $4, $5)`,
+          [userId, tokens, 'topup', 'token_topups', topupId],
+          client
+        );
+
+        await client.query('COMMIT');
+        client.release();
+      } catch (err) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {}
+        client.release();
+        console.error(err);
+        return res.status(500).send('Server error');
+      }
+    }
+  }
+
+  res.json({ received: true });
 });
 
 // Session must come after database init because it depends on pgSession with the connected pool
@@ -563,6 +744,124 @@ app.get('/api/raffle/:id/winners', async (req, res) => {
     `, [req.params.id]);
     res.json({ winners: result.rows });
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/raffle/:id/buy-with-tokens', requireAuthApi, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const raffleId = parseInt(req.params.id);
+    const quantity = parseInt(req.body.quantity, 10);
+    if (!raffleId) {
+      client.release();
+      return res.status(400).json({ error: '抽獎活動ID無效' });
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 50) {
+      client.release();
+      return res.status(400).json({ error: '購買數量無效（最多 50）' });
+    }
+
+    await client.query('BEGIN');
+
+    const raffleResult = await dbQuery('SELECT * FROM raffles WHERE id = $1 FOR UPDATE', [raffleId], client);
+    if (raffleResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: '抽獎活動不存在' });
+    }
+    const raffle = raffleResult.rows[0];
+    if (raffle.status !== 'active') {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: '抽獎活動已關閉' });
+    }
+
+    const userResult = await dbQuery('SELECT id, token_balance FROM users WHERE id = $1 FOR UPDATE', [req.session.user.id], client);
+    if (userResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(401).json({ error: '請先登入' });
+    }
+    const user = userResult.rows[0];
+    const costTokens = quantity * TOKENS_PER_BOX;
+    if (Number(user.token_balance || 0) < costTokens) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: `Tokens 不足，需要 ${costTokens} tokens` });
+    }
+
+    const prizesResult = await dbQuery(
+      `
+        SELECT p.id, p.remaining_count, COUNT(vc.id) as pending_codes
+        FROM prizes p
+        LEFT JOIN verification_codes vc
+          ON p.id = vc.prize_id AND vc.used = false
+        WHERE p.raffle_id = $1
+        GROUP BY p.id, p.remaining_count
+      `,
+      [raffleId],
+      client
+    );
+
+    const availablePrizes = [];
+    for (const row of prizesResult.rows) {
+      const realRemaining = parseInt(row.remaining_count) - parseInt(row.pending_codes);
+      for (let i = 0; i < realRemaining; i++) {
+        availablePrizes.push(row.id);
+      }
+    }
+
+    if (availablePrizes.length < quantity) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: `剩餘獎項數量不足，淨係得 ${availablePrizes.length} 個空額` });
+    }
+
+    for (let i = availablePrizes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [availablePrizes[i], availablePrizes[j]] = [availablePrizes[j], availablePrizes[i]];
+    }
+
+    await dbQuery('UPDATE users SET token_balance = token_balance - $1 WHERE id = $2', [costTokens, user.id], client);
+    await dbQuery(
+      `INSERT INTO token_ledger (user_id, delta_tokens, reason, ref_type, ref_id) VALUES ($1, $2, $3, $4, $5)`,
+      [user.id, -costTokens, 'buy_boxes', 'raffles', raffleId],
+      client
+    );
+
+    const codes = [];
+    for (let i = 0; i < quantity; i++) {
+      const prizeId = availablePrizes[i];
+      while (true) {
+        const code = crypto.randomBytes(8).toString('hex').toUpperCase();
+        const inserted = await dbQuery(
+          `
+            INSERT INTO verification_codes (raffle_id, code, prize_id, assigned_user_id, assigned_at)
+              VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+              ON CONFLICT (code) DO NOTHING
+              RETURNING code
+          `,
+          [raffleId, code, prizeId, user.id],
+          client
+        );
+        if (inserted.rows.length > 0) {
+          codes.push(inserted.rows[0].code);
+          break;
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+    client.release();
+
+    res.json({ success: true, quantity, costTokens, codes });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    client.release();
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
