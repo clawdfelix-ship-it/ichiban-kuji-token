@@ -684,31 +684,6 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
     );
     const updatedPrize = prizeUpdate.rows[0];
 
-    const raffleUpdate = await dbQuery(
-      `
-        UPDATE raffles r
-          SET remaining_boxes = GREATEST(r.total_boxes - x.entry_count, 0)
-          FROM (
-            SELECT COUNT(*)::INTEGER as entry_count
-            FROM entries
-            WHERE raffle_id = $1
-          ) x
-          WHERE r.id = $1
-          RETURNING r.remaining_boxes, r.status
-      `,
-      [raffleId],
-      client
-    );
-    const remainingBoxes = raffleUpdate.rows[0]?.remaining_boxes;
-    if (typeof remainingBoxes !== 'number') {
-      await client.query('ROLLBACK');
-      await client.release();
-      return res.status(409).json({ error: '盒子餘量更新失敗，請重試' });
-    }
-    if (remainingBoxes <= 0) {
-      await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffleId], client);
-    }
-
     // Create entry
     const entryResult = await dbQuery(
       `
@@ -729,6 +704,31 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
       [entryId, raffleId, updatedPrize.id, effectiveUsername, userId],
       client
     );
+
+    const raffleUpdate = await dbQuery(
+      `
+        UPDATE raffles r
+          SET remaining_boxes = GREATEST(r.total_boxes - x.entry_count, 0)
+          FROM (
+            SELECT COUNT(*)::INTEGER as entry_count
+            FROM entries
+            WHERE raffle_id = $1
+          ) x
+          WHERE r.id = $1
+          RETURNING r.remaining_boxes
+      `,
+      [raffleId],
+      client
+    );
+    const remainingBoxes = raffleUpdate.rows[0]?.remaining_boxes;
+    if (typeof remainingBoxes !== 'number') {
+      await client.query('ROLLBACK');
+      await client.release();
+      return res.status(409).json({ error: '盒子餘量更新失敗，請重試' });
+    }
+    if (remainingBoxes <= 0) {
+      await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffleId], client);
+    }
 
     await client.query('COMMIT');
     await client.release();
