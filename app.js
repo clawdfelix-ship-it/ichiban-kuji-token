@@ -684,23 +684,27 @@ app.post('/api/raffle/:id/draw', async (req, res) => {
     );
     const updatedPrize = prizeUpdate.rows[0];
 
-    // Update raffle remaining boxes
     const raffleUpdate = await dbQuery(
       `
-        UPDATE raffles
-          SET remaining_boxes = remaining_boxes - 1
-          WHERE id = $1 AND remaining_boxes > 0
-          RETURNING remaining_boxes
+        UPDATE raffles r
+          SET remaining_boxes = GREATEST(r.total_boxes - x.entry_count, 0)
+          FROM (
+            SELECT COUNT(*)::INTEGER as entry_count
+            FROM entries
+            WHERE raffle_id = $1
+          ) x
+          WHERE r.id = $1
+          RETURNING r.remaining_boxes, r.status
       `,
       [raffleId],
       client
     );
-    if (raffleUpdate.rows.length === 0) {
+    const remainingBoxes = raffleUpdate.rows[0]?.remaining_boxes;
+    if (typeof remainingBoxes !== 'number') {
       await client.query('ROLLBACK');
       await client.release();
       return res.status(409).json({ error: '盒子餘量更新失敗，請重試' });
     }
-    const remainingBoxes = raffleUpdate.rows[0].remaining_boxes;
     if (remainingBoxes <= 0) {
       await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffleId], client);
     }
@@ -984,12 +988,17 @@ app.post('/api/raffle/:id/batch-draw', async (req, res) => {
     if (successCount > 0) {
       const raffleUpdate = await dbQuery(
         `
-          UPDATE raffles
-            SET remaining_boxes = remaining_boxes - $1
-            WHERE id = $2
-            RETURNING remaining_boxes
+          UPDATE raffles r
+            SET remaining_boxes = GREATEST(r.total_boxes - x.entry_count, 0)
+            FROM (
+              SELECT COUNT(*)::INTEGER as entry_count
+              FROM entries
+              WHERE raffle_id = $1
+            ) x
+            WHERE r.id = $1
+            RETURNING r.remaining_boxes
         `,
-        [successCount, raffleId],
+        [raffleId],
         client
       );
 
@@ -1096,6 +1105,52 @@ app.get('/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
     return res.status(404).send('抽獎活動不存在');
   }
   res.render('admin/codes', { raffleId, title: raffleResult.rows[0].title });
+});
+
+app.post('/api/admin/raffles/:id/reconcile-boxes', requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const raffleId = parseInt(req.params.id);
+    if (!raffleId) {
+      client.release();
+      return res.status(400).json({ error: '抽獎活動ID無效' });
+    }
+    await client.query('BEGIN');
+    const updated = await dbQuery(
+      `
+        UPDATE raffles r
+          SET remaining_boxes = GREATEST(r.total_boxes - x.entry_count, 0)
+          FROM (
+            SELECT COUNT(*)::INTEGER as entry_count
+            FROM entries
+            WHERE raffle_id = $1
+          ) x
+          WHERE r.id = $1
+          RETURNING r.id, r.total_boxes, r.remaining_boxes, r.status
+      `,
+      [raffleId],
+      client
+    );
+    if (updated.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(404).json({ error: '抽獎活動不存在' });
+    }
+    const row = updated.rows[0];
+    if (row.remaining_boxes <= 0) {
+      await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffleId], client);
+    }
+    await client.query('COMMIT');
+    client.release();
+    res.json({ success: true, raffle: row });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    client.release();
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Create new raffle
