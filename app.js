@@ -196,12 +196,12 @@ async function initDatabase() {
         total_boxes INTEGER,
         price_per_box REAL,
         cover_image TEXT NULL,
+        token_price_per_box INTEGER NULL,
         remaining_boxes INTEGER,
         num_pools INTEGER DEFAULT 1,
         start_date TIMESTAMP,
         end_date TIMESTAMP,
         status TEXT DEFAULT 'active',
-        created_by INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -296,6 +296,7 @@ async function initDatabase() {
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS assigned_by INTEGER NULL');
     await dbQuery('ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS purchase_id INTEGER NULL');
     await dbQuery('ALTER TABLE raffles ADD COLUMN IF NOT EXISTS cover_image TEXT NULL');
+    await dbQuery('ALTER TABLE raffles ADD COLUMN IF NOT EXISTS token_price_per_box INTEGER NULL');
     await dbQuery('ALTER TABLE entries ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMP NULL');
 
     const adminResult = await dbQuery('SELECT COUNT(*) as count FROM users WHERE is_admin = 1');
@@ -364,7 +365,8 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECR
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 const stripeClient = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
-const TOKENS_PER_BOX = 299;
+const TOPUP_TOKENS_MIN = 1;
+const TOPUP_TOKENS_MAX = 50000;
 
 // Session must come after database init because it depends on pgSession with the connected pool
 app.use(
@@ -475,11 +477,8 @@ app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
     }
 
     const tokens = parseInt(req.body.tokens, 10);
-    if (!Number.isFinite(tokens) || tokens <= 0 || tokens % TOKENS_PER_BOX !== 0) {
-      return res.status(400).json({ error: `充值 tokens 必須係 ${TOKENS_PER_BOX} 嘅倍數` });
-    }
-    if (tokens > TOKENS_PER_BOX * 200) {
-      return res.status(400).json({ error: '單次充值太大' });
+    if (!Number.isFinite(tokens) || tokens < TOPUP_TOKENS_MIN || tokens > TOPUP_TOKENS_MAX) {
+      return res.status(400).json({ error: `充值 tokens 需介乎 ${TOPUP_TOKENS_MIN} - ${TOPUP_TOKENS_MAX}` });
     }
 
     const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -959,7 +958,13 @@ app.post('/api/raffle/:id/buy-with-tokens', requireAuthApi, async (req, res) => 
       return res.status(401).json({ error: '請先登入' });
     }
     const user = userResult.rows[0];
-    const costTokens = quantity * TOKENS_PER_BOX;
+    const tokenPricePerBox = parseInt(raffle.token_price_per_box, 10);
+    if (!Number.isFinite(tokenPricePerBox) || tokenPricePerBox <= 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(400).json({ error: '此活動未設定 token 價格' });
+    }
+    const costTokens = quantity * tokenPricePerBox;
     if (Number(user.token_balance || 0) < costTokens) {
       await client.query('ROLLBACK');
       client.release();
@@ -1651,12 +1656,13 @@ app.post('/api/admin/raffles', requireAdminApi, multerUnlessJson, async (req, re
       type = 'ichiban',
       total_boxes,
       price_per_box,
+      token_price_per_box,
       num_pools = 1
     } = req.body;
 
     const result = await dbQuery(`
-      INSERT INTO raffles (title, description, type, total_boxes, price_per_box, remaining_boxes, num_pools, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO raffles (title, description, type, total_boxes, price_per_box, token_price_per_box, remaining_boxes, num_pools, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
     `, [
       title,
@@ -1664,6 +1670,7 @@ app.post('/api/admin/raffles', requireAdminApi, multerUnlessJson, async (req, re
       type,
       parseInt(total_boxes),
       parseFloat(price_per_box),
+      token_price_per_box ? parseInt(token_price_per_box) : null,
       parseInt(total_boxes),
       parseInt(num_pools),
       req.session.user.id
@@ -1684,14 +1691,15 @@ app.post('/api/admin/raffles/create', requireAdminApi, multerUnlessJson, async (
       type = 'ichiban',
       total_boxes,
       price_per_box,
+      token_price_per_box,
       num_pools = 1,
       cover_image_url
     } = req.body;
 
     const result = await dbQuery(
       `
-        INSERT INTO raffles (title, description, type, total_boxes, price_per_box, remaining_boxes, num_pools, created_by, cover_image)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO raffles (title, description, type, total_boxes, price_per_box, token_price_per_box, remaining_boxes, num_pools, created_by, cover_image)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id
       `,
       [
@@ -1700,6 +1708,7 @@ app.post('/api/admin/raffles/create', requireAdminApi, multerUnlessJson, async (
         type,
         parseInt(total_boxes),
         parseFloat(price_per_box),
+        token_price_per_box ? parseInt(token_price_per_box) : null,
         parseInt(total_boxes),
         parseInt(num_pools),
         req.session.user.id,
@@ -2141,7 +2150,7 @@ app.get('/api/admin/raffles', requireAdminApi, async (req, res) => {
 app.put('/api/admin/raffles/:id/update', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
-    const { title, description, total_boxes, price_per_box, status, num_pools, cover_image } = req.body;
+    const { title, description, total_boxes, price_per_box, token_price_per_box, status, num_pools, cover_image } = req.body;
 
     await dbQuery(
       `
@@ -2150,16 +2159,18 @@ app.put('/api/admin/raffles/:id/update', requireAdminApi, async (req, res) => {
               description = $2,
               total_boxes = $3,
               price_per_box = $4,
-              status = $5,
-              num_pools = $6,
-              cover_image = $7
-          WHERE id = $8
+              token_price_per_box = $5,
+              status = $6,
+              num_pools = $7,
+              cover_image = $8
+          WHERE id = $9
       `,
       [
         title,
         description || null,
         parseInt(total_boxes),
         parseFloat(price_per_box),
+        token_price_per_box ? parseInt(token_price_per_box) : null,
         status,
         num_pools ? parseInt(num_pools) : 1,
         cover_image || null,
@@ -2177,19 +2188,27 @@ app.put('/api/admin/raffles/:id/update', requireAdminApi, async (req, res) => {
 app.patch('/api/admin/raffles/:id', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
-    const { title, description, total_boxes, price_per_box, status, num_pools, cover_image } = req.body;
+    const { title, description, total_boxes, price_per_box, token_price_per_box, status, num_pools, cover_image } = req.body;
 
     await dbQuery(
       `
         UPDATE raffles
-          SET title = $1, description = $2, total_boxes = $3, price_per_box = $4, status = $5, num_pools = $6, cover_image = $7
-          WHERE id = $8
+          SET title = $1,
+              description = $2,
+              total_boxes = $3,
+              price_per_box = $4,
+              token_price_per_box = $5,
+              status = $6,
+              num_pools = $7,
+              cover_image = $8
+          WHERE id = $9
       `,
       [
         title,
         description || null,
         parseInt(total_boxes),
         parseFloat(price_per_box),
+        token_price_per_box ? parseInt(token_price_per_box) : null,
         status,
         parseInt(num_pools),
         cover_image || null,

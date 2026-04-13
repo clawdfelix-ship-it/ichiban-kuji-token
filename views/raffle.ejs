@@ -54,14 +54,13 @@
           <% if (currentUser) { %>
             <p style="margin-top: 8px;">我的 Tokens：<strong><span id="tokenBalanceRaffle">--</span></strong></p>
             <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-              <button class="btn btn-secondary btn-sm" data-topup-tokens="299">充值 299</button>
-              <button class="btn btn-secondary btn-sm" data-topup-tokens="598">充值 598</button>
-              <button class="btn btn-secondary btn-sm" data-topup-tokens="897">充值 897</button>
+              <input id="topupTokensInputRaffle" type="number" min="1" step="1" placeholder="輸入充值 tokens" style="width: 180px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+              <button id="topupTokensBtnRaffle" class="btn btn-secondary btn-sm">去 Stripe 充值</button>
             </div>
             <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
               <label style="font-size: 14px;">購買盒數</label>
               <input id="buyQtyTokens" type="number" min="1" max="50" value="1" style="width: 120px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;">
-              <button id="buyWithTokensBtn" class="btn btn-primary btn-sm">用 Tokens 買盒（299/盒）</button>
+              <button id="buyWithTokensBtn" class="btn btn-primary btn-sm">用 Tokens 買盒（<%= raffle.token_price_per_box || '?' %>/盒）</button>
             </div>
             <div id="buyWithTokensResult" style="margin-top: 12px; display: none;">
               <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">已生成驗證碼（請即刻複製保存）：</div>

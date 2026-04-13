@@ -275,7 +275,8 @@ function initTokenPayBox() {
   const resultWrap = document.getElementById('buyWithTokensResult');
   const codesEl = document.getElementById('buyWithTokensCodes');
   const copyBtn = document.getElementById('copyBoughtCodesBtn');
-  const topupBtns = document.querySelectorAll('#tokenPayBox [data-topup-tokens]');
+  const topupInput = document.getElementById('topupTokensInputRaffle');
+  const topupBtn = document.getElementById('topupTokensBtnRaffle');
 
   if (!balanceEl || !qtyEl || !buyBtn) return;
 
@@ -285,22 +286,22 @@ function initTokenPayBox() {
     })
     .catch(() => {});
 
-  topupBtns.forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
+  if (topupBtn && topupInput) {
+    topupBtn.addEventListener('click', async () => {
+      topupBtn.disabled = true;
       try {
-        const tokens = parseInt(btn.dataset.topupTokens, 10);
+        const tokens = parseInt(topupInput.value, 10);
         const r = await apiRequest('/api/wallet/stripe/checkout', {
           method: 'POST',
           body: JSON.stringify({ tokens })
         });
         window.location.href = r.url;
       } catch (e) {
-        btn.disabled = false;
+        topupBtn.disabled = false;
         alert('充值失敗: ' + e.message);
       }
     });
-  });
+  }
 
   buyBtn.addEventListener('click', async () => {
     buyBtn.disabled = true;
@@ -558,6 +559,7 @@ function initCreateRafflePage() {
         description: document.getElementById('description').value.trim(),
         total_boxes: document.getElementById('total_boxes').value,
         price_per_box: document.getElementById('price_per_box').value,
+        token_price_per_box: document.getElementById('token_price_per_box')?.value,
         num_pools: document.getElementById('num_pools').value || 1,
         cover_image: document.getElementById('cover_image_url').value.trim() || null
       };
@@ -1005,6 +1007,7 @@ function initEditPage() {
         description: document.getElementById('description').value,
         total_boxes: document.getElementById('total_boxes').value,
         price_per_box: document.getElementById('price_per_box').value,
+        token_price_per_box: document.getElementById('token_price_per_box')?.value,
         cover_image: document.getElementById('cover_image_url').value || null,
         status: document.getElementById('status').value
       };

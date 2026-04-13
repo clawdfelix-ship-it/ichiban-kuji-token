@@ -38,9 +38,8 @@
             <div class="stat-badge">
               <strong>餘額</strong>: <span id="tokenBalance">--</span> tokens
             </div>
-            <button class="btn btn-primary btn-sm" data-topup-tokens="299">充值 299</button>
-            <button class="btn btn-primary btn-sm" data-topup-tokens="598">充值 598</button>
-            <button class="btn btn-primary btn-sm" data-topup-tokens="897">充值 897</button>
+            <input id="topupTokensInput" type="number" min="1" step="1" placeholder="輸入充值 tokens" style="width: 180px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+            <button id="topupTokensBtn" class="btn btn-primary btn-sm">去 Stripe 充值</button>
           </div>
           <div id="topupHint" style="margin-top: 10px; color: var(--text-tertiary); font-size: 13px;"></div>
         </div>
@@ -99,22 +98,24 @@
 
         const balance = await apiRequest('/api/wallet/balance');
         document.getElementById('tokenBalance').textContent = balance.token_balance ?? 0;
-        document.querySelectorAll('[data-topup-tokens]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
+        const topupInput = document.getElementById('topupTokensInput');
+        const topupBtn = document.getElementById('topupTokensBtn');
+        if (topupBtn && topupInput) {
+          topupBtn.addEventListener('click', async () => {
+            topupBtn.disabled = true;
             try {
-              const tokens = parseInt(btn.dataset.topupTokens, 10);
+              const tokens = parseInt(topupInput.value, 10);
               const r = await apiRequest('/api/wallet/stripe/checkout', {
                 method: 'POST',
                 body: JSON.stringify({ tokens })
               });
               window.location.href = r.url;
             } catch (e) {
-              btn.disabled = false;
+              topupBtn.disabled = false;
               alert('充值失敗: ' + e.message);
             }
           });
-        });
+        }
 
         const result = await apiRequest('/api/my/entries');
         const entries = result.entries;
