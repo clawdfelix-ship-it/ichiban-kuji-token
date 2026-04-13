@@ -372,55 +372,64 @@ app.get('/api/wallet/balance', requireAuthApi, async (req, res) => {
 });
 
 app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
-  if (!stripeClient) {
-    return res.status(500).json({ error: 'Stripe 未設定' });
-  }
-  const tokens = parseInt(req.body.tokens, 10);
-  if (!Number.isFinite(tokens) || tokens <= 0 || tokens % TOKENS_PER_BOX !== 0) {
-    return res.status(400).json({ error: `充值 tokens 必須係 ${TOKENS_PER_BOX} 嘅倍數` });
-  }
-  if (tokens > TOKENS_PER_BOX * 200) {
-    return res.status(400).json({ error: '單次充值太大' });
-  }
+  try {
+    if (!stripeClient) {
+      return res.status(500).json({ error: 'Stripe 未設定' });
+    }
+    if (!stripeSecretKey.startsWith('sk_')) {
+      return res.status(500).json({ error: 'Stripe key 設定錯誤（請使用 Secret Key）' });
+    }
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const tokens = parseInt(req.body.tokens, 10);
+    if (!Number.isFinite(tokens) || tokens <= 0 || tokens % TOKENS_PER_BOX !== 0) {
+      return res.status(400).json({ error: `充值 tokens 必須係 ${TOKENS_PER_BOX} 嘅倍數` });
+    }
+    if (tokens > TOKENS_PER_BOX * 200) {
+      return res.status(400).json({ error: '單次充值太大' });
+    }
 
-  const topupResult = await dbQuery(
-    `
-      INSERT INTO token_topups (user_id, provider, provider_ref, status, tokens, amount_hkd, currency)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-    `,
-    [req.session.user.id, 'stripe', null, 'pending', tokens, tokens, 'HKD']
-  );
-  const topupId = topupResult.rows[0].id;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
 
-  const session = await stripeClient.checkout.sessions.create({
-    mode: 'payment',
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: 'hkd',
-          unit_amount: tokens * 100,
-          product_data: {
-            name: `充值 Tokens ${tokens}`,
+    const topupResult = await dbQuery(
+      `
+        INSERT INTO token_topups (user_id, provider, provider_ref, status, tokens, amount_hkd, currency)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id
+      `,
+      [req.session.user.id, 'stripe', null, 'pending', tokens, tokens, 'HKD']
+    );
+    const topupId = topupResult.rows[0].id;
+
+    const session = await stripeClient.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'hkd',
+            unit_amount: tokens * 100,
+            product_data: {
+              name: `充值 Tokens ${tokens}`
+            }
           }
         }
-      }
-    ],
-    metadata: {
-      topup_id: String(topupId),
-      user_id: String(req.session.user.id),
-      tokens: String(tokens)
-    },
-    success_url: `${baseUrl}/my?topup=success`,
-    cancel_url: `${baseUrl}/my?topup=cancel`
-  });
+      ],
+      metadata: {
+        topup_id: String(topupId),
+        user_id: String(req.session.user.id),
+        tokens: String(tokens)
+      },
+      success_url: `${baseUrl}/my?topup=success`,
+      cancel_url: `${baseUrl}/my?topup=cancel`
+    });
 
-  await dbQuery('UPDATE token_topups SET provider_ref = $1 WHERE id = $2', [session.id, topupId]);
-  res.json({ url: session.url });
+    await dbQuery('UPDATE token_topups SET provider_ref = $1 WHERE id = $2', [session.id, topupId]);
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Stripe checkout failed:', err);
+    res.status(500).json({ error: err?.message || 'Stripe error' });
+  }
 });
 
 app.post('/api/webhooks/stripe', async (req, res) => {
