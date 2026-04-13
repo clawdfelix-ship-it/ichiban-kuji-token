@@ -1277,6 +1277,17 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// User logout
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/');
+});
+
+app.post('/api/user/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
 // Get my entries for current user
 app.get('/api/my/entries', requireAuth, async (req, res) => {
   try {
