@@ -366,6 +366,21 @@ const stripeClient = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 const TOKENS_PER_BOX = 299;
 
+app.get('/api/admin/stripe/debug', requireAdminApi, async (req, res) => {
+  res.json({
+    stripe: {
+      has_secret_key: !!stripeSecretKey,
+      secret_key_prefix: stripeSecretKey ? stripeSecretKey.slice(0, 7) : null,
+      has_webhook_secret: !!stripeWebhookSecret
+    },
+    env: {
+      vercel: !!process.env.VERCEL,
+      has_postgres_url: !!connectionString,
+      has_session_secret: !!process.env.SESSION_SECRET
+    }
+  });
+});
+
 app.get('/api/wallet/balance', requireAuthApi, async (req, res) => {
   const result = await dbQuery('SELECT token_balance FROM users WHERE id = $1', [req.session.user.id]);
   res.json({ token_balance: result.rows[0]?.token_balance || 0 });
@@ -428,6 +443,9 @@ app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
     res.json({ url: session.url });
   } catch (err) {
     console.error('Stripe checkout failed:', err);
+    if (!connectionString) {
+      return res.status(500).json({ error: 'POSTGRES_URL 未設定' });
+    }
     res.status(500).json({ error: err?.message || 'Stripe error' });
   }
 });
