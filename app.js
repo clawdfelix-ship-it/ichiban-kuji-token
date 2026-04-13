@@ -514,7 +514,7 @@ app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
         user_id: String(req.session.user.id),
         tokens: String(tokens)
       },
-      success_url: `${baseUrl}/my?topup=success`,
+      success_url: `${baseUrl}/my?topup=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/my?topup=cancel`
     });
 
@@ -526,6 +526,82 @@ app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
       return res.status(500).json({ error: 'POSTGRES_URL 未設定' });
     }
     res.status(500).json({ error: err?.message || 'Stripe error' });
+  }
+});
+
+app.post('/api/wallet/stripe/confirm', requireAuthApi, async (req, res) => {
+  try {
+    if (!stripeClient) {
+      return res.status(500).json({ error: 'Stripe 未設定' });
+    }
+    if (!stripeSecretKey.startsWith('sk_')) {
+      return res.status(500).json({ error: 'Stripe key 設定錯誤（請使用 Secret Key）' });
+    }
+    const sessionId = String(req.body.session_id || '').trim();
+    if (!sessionId) {
+      return res.status(400).json({ error: '缺少 session_id' });
+    }
+
+    const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid') {
+      return res.status(400).json({ error: '付款未完成' });
+    }
+
+    const topupId = parseInt(session?.metadata?.topup_id, 10);
+    const userId = parseInt(session?.metadata?.user_id, 10);
+    const tokens = parseInt(session?.metadata?.tokens, 10);
+    if (!topupId || !userId || !tokens) {
+      return res.status(400).json({ error: '付款資料不完整' });
+    }
+    if (userId !== req.session.user.id) {
+      return res.status(403).json({ error: '付款帳號不匹配' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await dbQuery(
+        `SELECT id, status, provider_ref FROM token_topups WHERE id = $1 FOR UPDATE`,
+        [topupId],
+        client
+      );
+      if (locked.rows.length === 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(404).json({ error: '充值記錄不存在' });
+      }
+      if (!locked.rows[0].provider_ref) {
+        await dbQuery('UPDATE token_topups SET provider_ref = $1 WHERE id = $2', [session.id, topupId], client);
+      }
+      if (locked.rows[0].status !== 'paid') {
+        await dbQuery(
+          `UPDATE token_topups SET status = 'paid', paid_at = CURRENT_TIMESTAMP WHERE id = $1`,
+          [topupId],
+          client
+        );
+        await dbQuery(`UPDATE users SET token_balance = token_balance + $1 WHERE id = $2`, [tokens, userId], client);
+        await dbQuery(
+          `INSERT INTO token_ledger (user_id, delta_tokens, reason, ref_type, ref_id) VALUES ($1, $2, $3, $4, $5)`,
+          [userId, tokens, 'topup', 'token_topups', topupId],
+          client
+        );
+      }
+
+      const bal = await dbQuery('SELECT token_balance FROM users WHERE id = $1', [userId], client);
+      await client.query('COMMIT');
+      client.release();
+      return res.json({ success: true, token_balance: bal.rows[0]?.token_balance || 0 });
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {}
+      client.release();
+      console.error(err);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  } catch (err) {
+    console.error('Stripe confirm failed:', err);
+    return res.status(500).json({ error: err?.message || 'Stripe error' });
   }
 });
 

@@ -78,11 +78,23 @@
       try {
         const params = new URLSearchParams(window.location.search);
         const topup = params.get('topup');
+        const sessionId = params.get('session_id');
         const hintEl = document.getElementById('topupHint');
         if (topup === 'success') {
           hintEl.textContent = '付款完成，Tokens 會喺幾秒內自動入帳。';
         } else if (topup === 'cancel') {
           hintEl.textContent = '已取消付款。';
+        }
+
+        if (topup === 'success' && sessionId) {
+          try {
+            await apiRequest('/api/wallet/stripe/confirm', {
+              method: 'POST',
+              body: JSON.stringify({ session_id: sessionId })
+            });
+          } catch (e) {
+            hintEl.textContent = '付款完成，但 Tokens 未入帳（Webhook/確認失敗），請聯絡管理員。';
+          }
         }
 
         const balance = await apiRequest('/api/wallet/balance');
