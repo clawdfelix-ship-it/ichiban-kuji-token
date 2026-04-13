@@ -146,7 +146,7 @@
 
         listEl.innerHTML = html;
       } catch (err) {
-        if (err.message.includes('需要登入')) {
+        if (err.message.includes('請先登入')) {
           document.getElementById('myContent').classList.add('hidden');
           document.getElementById('loginRequired').classList.remove('hidden');
           return;

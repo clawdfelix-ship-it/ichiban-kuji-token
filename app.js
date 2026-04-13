@@ -1935,7 +1935,7 @@ app.post('/api/user/logout', (req, res) => {
 });
 
 // Get my entries for current user
-app.get('/api/my/entries', requireAuth, async (req, res) => {
+app.get('/api/my/entries', requireAuthApi, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const result = await dbQuery(
@@ -1950,6 +1950,31 @@ app.get('/api/my/entries', requireAuth, async (req, res) => {
       [userId]
     );
     res.json({ entries: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/my/entries/:id/redeem', requireAuthApi, async (req, res) => {
+  try {
+    const entryId = parseInt(req.params.id);
+    const userId = req.session.user.id;
+
+    const updated = await dbQuery(
+      `
+        UPDATE entries
+          SET redeemed_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND user_id = $2 AND redeemed_at IS NULL
+          RETURNING id
+      `,
+      [entryId, userId]
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(400).json({ error: '核銷失敗' });
+    }
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -2044,4 +2069,12 @@ if (!isVercel) {
 }
 
 // For Vercel serverless
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (req.path && req.path.startsWith('/api/')) {
+    return res.status(500).json({ error: 'Server error' });
+  }
+  res.status(500).send('Server error');
+});
+
 module.exports = app;
