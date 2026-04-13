@@ -473,6 +473,21 @@ app.get('/raffle/:id', async (req, res) => {
     }
     const raffle = raffleResult.rows[0];
 
+    const entriesCountResult = await dbQuery(
+      'SELECT COUNT(*)::INTEGER as count FROM entries WHERE raffle_id = $1',
+      [raffle.id]
+    );
+    const entriesCount = entriesCountResult.rows[0]?.count || 0;
+    const computedRemaining = Math.max((Number(raffle.total_boxes) || 0) - (Number(entriesCount) || 0), 0);
+    if (Number.isFinite(computedRemaining) && Number(raffle.remaining_boxes) !== Number(computedRemaining)) {
+      await dbQuery('UPDATE raffles SET remaining_boxes = $1 WHERE id = $2', [computedRemaining, raffle.id]);
+      raffle.remaining_boxes = computedRemaining;
+      if (computedRemaining <= 0 && raffle.status !== 'completed') {
+        await dbQuery(`UPDATE raffles SET status = 'completed' WHERE id = $1`, [raffle.id]);
+        raffle.status = 'completed';
+      }
+    }
+
     // Get all prizes grouped by tier
     const prizesResult = await dbQuery(`
       SELECT * FROM prizes
@@ -503,7 +518,7 @@ app.get('/raffle/:id', async (req, res) => {
       LIMIT 20
     `, [req.params.id]);
 
-    const remainingCount = raffle.remaining_boxes;
+    const remainingCount = Number.isFinite(computedRemaining) ? computedRemaining : raffle.remaining_boxes;
 
     res.render('raffle', {
       raffle,
