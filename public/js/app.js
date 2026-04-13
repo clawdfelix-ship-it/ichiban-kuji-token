@@ -42,6 +42,8 @@ function initRafflePage(raffleId) {
   const closeBtn = document.getElementById('closeResult');
   const resultContent = document.getElementById('resultContent');
 
+  initTokenPayBox();
+
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -259,6 +261,71 @@ function initRafflePage(raffleId) {
       }
     });
   }
+}
+
+function initTokenPayBox() {
+  const balanceEl = document.getElementById('tokenBalanceRaffle');
+  const qtyEl = document.getElementById('buyQtyTokens');
+  const buyBtn = document.getElementById('buyWithTokensBtn');
+  const resultWrap = document.getElementById('buyWithTokensResult');
+  const codesEl = document.getElementById('buyWithTokensCodes');
+  const copyBtn = document.getElementById('copyBoughtCodesBtn');
+  const topupBtns = document.querySelectorAll('#tokenPayBox [data-topup-tokens]');
+
+  if (!balanceEl || !qtyEl || !buyBtn) return;
+
+  apiRequest('/api/wallet/balance')
+    .then((b) => {
+      balanceEl.textContent = b.token_balance ?? 0;
+    })
+    .catch(() => {});
+
+  topupBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const tokens = parseInt(btn.dataset.topupTokens, 10);
+        const r = await apiRequest('/api/wallet/stripe/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ tokens })
+        });
+        window.location.href = r.url;
+      } catch (e) {
+        btn.disabled = false;
+        alert('充值失敗: ' + e.message);
+      }
+    });
+  });
+
+  buyBtn.addEventListener('click', async () => {
+    buyBtn.disabled = true;
+    try {
+      const quantity = parseInt(qtyEl.value, 10);
+      const r = await apiRequest(`/api/raffle/${currentRaffleId}/buy-with-tokens`, {
+        method: 'POST',
+        body: JSON.stringify({ quantity })
+      });
+      const codesText = (r.codes || []).join('|');
+      codesEl.textContent = codesText;
+      resultWrap.style.display = 'block';
+      if (copyBtn) {
+        copyBtn.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(codesText);
+            alert('已複製');
+          } catch (e) {
+            alert('複製失敗');
+          }
+        };
+      }
+      const b = await apiRequest('/api/wallet/balance');
+      balanceEl.textContent = b.token_balance ?? 0;
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      buyBtn.disabled = false;
+    }
+  });
 }
 
 // ============================================

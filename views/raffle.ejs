@@ -45,8 +45,33 @@
 
         <div class="legal-notice" style="background: #e7f3ff; border: 1px solid #b6d4fe; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
           <p style="margin: 0; color: #084298; font-size: 14px; line-height: 1.5;">
-            <strong>服務流程：</strong>付款 → 管理員發送驗證碼 → 輸入驗證碼提交委託 → 系統隨機開盒 → 獲得商品
+            <strong>服務流程：</strong>充值 Tokens → 用 Tokens 購買盒子 → 系統發送驗證碼 → 輸入驗證碼提交委託 → 系統隨機開盒 → 獲得商品
           </p>
+        </div>
+
+        <div class="payment-alert" id="tokenPayBox">
+          <p>💳 <strong>用 Tokens 購買盒子（自動派驗證碼）</strong></p>
+          <% if (currentUser) { %>
+            <p style="margin-top: 8px;">我的 Tokens：<strong><span id="tokenBalanceRaffle">--</span></strong></p>
+            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <button class="btn btn-secondary btn-sm" data-topup-tokens="299">充值 299</button>
+              <button class="btn btn-secondary btn-sm" data-topup-tokens="598">充值 598</button>
+              <button class="btn btn-secondary btn-sm" data-topup-tokens="897">充值 897</button>
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              <label style="font-size: 14px;">購買盒數</label>
+              <input id="buyQtyTokens" type="number" min="1" max="50" value="1" style="width: 120px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+              <button id="buyWithTokensBtn" class="btn btn-primary btn-sm">用 Tokens 買盒（299/盒）</button>
+            </div>
+            <div id="buyWithTokensResult" style="margin-top: 12px; display: none;">
+              <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 6px;">已生成驗證碼（請即刻複製保存）：</div>
+              <code id="buyWithTokensCodes" style="display: block; background: #f5f5f5; padding: 10px 12px; border-radius: 8px; font-family: monospace; word-break: break-all;"></code>
+              <button id="copyBoughtCodesBtn" class="btn btn-secondary btn-sm" style="margin-top: 10px;">複製全部</button>
+            </div>
+          <% } else { %>
+            <p style="margin-top: 8px;">請先登入會員，先可以用 Tokens 購買盒子。</p>
+            <a href="/login" class="btn btn-primary btn-sm" style="margin-top: 8px;">立即登入</a>
+          <% } %>
         </div>
 
         <div class="payment-alert">

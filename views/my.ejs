@@ -31,6 +31,20 @@
           <h2 style="margin: 0;">我的獲得商品</h2>
           <a href="/logout" class="btn btn-secondary">登出</a>
         </div>
+
+        <div class="entry-section" style="margin-bottom: 16px;">
+          <h3 style="margin-top: 0;">我的 Tokens</h3>
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div class="stat-badge">
+              <strong>餘額</strong>: <span id="tokenBalance">--</span> tokens
+            </div>
+            <button class="btn btn-primary btn-sm" data-topup-tokens="299">充值 299</button>
+            <button class="btn btn-primary btn-sm" data-topup-tokens="598">充值 598</button>
+            <button class="btn btn-primary btn-sm" data-topup-tokens="897">充值 897</button>
+          </div>
+          <div id="topupHint" style="margin-top: 10px; color: var(--text-tertiary); font-size: 13px;"></div>
+        </div>
+
         <div id="entriesList" class="user-winnings">
           <!-- loaded by JS -->
         </div>
@@ -62,6 +76,34 @@
       document.getElementById('myContent').classList.remove('hidden');
 
       try {
+        const params = new URLSearchParams(window.location.search);
+        const topup = params.get('topup');
+        const hintEl = document.getElementById('topupHint');
+        if (topup === 'success') {
+          hintEl.textContent = '付款完成，Tokens 會喺幾秒內自動入帳。';
+        } else if (topup === 'cancel') {
+          hintEl.textContent = '已取消付款。';
+        }
+
+        const balance = await apiRequest('/api/wallet/balance');
+        document.getElementById('tokenBalance').textContent = balance.token_balance ?? 0;
+        document.querySelectorAll('[data-topup-tokens]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const tokens = parseInt(btn.dataset.topupTokens, 10);
+              const r = await apiRequest('/api/wallet/stripe/checkout', {
+                method: 'POST',
+                body: JSON.stringify({ tokens })
+              });
+              window.location.href = r.url;
+            } catch (e) {
+              btn.disabled = false;
+              alert('充值失敗: ' + e.message);
+            }
+          });
+        });
+
         const result = await apiRequest('/api/my/entries');
         const entries = result.entries;
 
