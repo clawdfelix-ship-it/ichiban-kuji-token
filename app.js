@@ -1292,9 +1292,16 @@ app.get('/api/admin/raffles/:id/codes', requireAdmin, async (req, res) => {
     const raffleId = parseInt(req.params.id);
     const result = await dbQuery(
       `
-        SELECT vc.*, p.tier, p.name as prize_name
+        SELECT
+          vc.*,
+          p.tier,
+          p.name as prize_name,
+          au.username as assigned_username,
+          uu.username as used_username
         FROM verification_codes vc
         JOIN prizes p ON vc.prize_id = p.id
+        LEFT JOIN users au ON vc.assigned_user_id = au.id
+        LEFT JOIN users uu ON vc.user_id = uu.id
         WHERE vc.raffle_id = $1
         ORDER BY vc.created_at DESC
       `,
