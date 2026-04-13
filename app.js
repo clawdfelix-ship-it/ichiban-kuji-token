@@ -1566,11 +1566,11 @@ app.post('/api/admin/raffles/create', requireAdminApi, multerUnlessJson, async (
 app.post('/api/admin/raffles/:id/prizes', requireAdminApi, async (req, res) => {
   try {
     const raffleId = parseInt(req.params.id);
-    const { tier, name, description, total_count, is_final, pool_number } = req.body;
+    const { tier, name, description, total_count, is_final, pool_number, image_url } = req.body;
 
     const result = await dbQuery(`
-      INSERT INTO prizes (raffle_id, tier, name, description, total_count, remaining_count, is_final, pool_number)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO prizes (raffle_id, tier, name, description, total_count, remaining_count, is_final, pool_number, image_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
     `, [
       raffleId,
@@ -1580,7 +1580,8 @@ app.post('/api/admin/raffles/:id/prizes', requireAdminApi, async (req, res) => {
       parseInt(total_count),
       parseInt(total_count),
       !!is_final,
-      pool_number ? parseInt(pool_number) : null
+      pool_number ? parseInt(pool_number) : null,
+      image_url || null
     ]);
 
     res.json({ success: true, id: result.rows[0].id });
@@ -1669,13 +1670,20 @@ app.delete('/api/admin/raffles/:raffleId/items/:itemId', requireAdminApi, async 
 app.patch('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdminApi, async (req, res) => {
   try {
     const { raffleId, prizeId } = req.params;
-    const { tier, name, description, total_count, remaining_count, is_final, pool_number } = req.body;
+    const { tier, name, description, total_count, remaining_count, is_final, pool_number, image_url } = req.body;
 
     await dbQuery(
       `
         UPDATE prizes
-          SET tier = $1, name = $2, description = $3, total_count = $4, remaining_count = $5, is_final = $6, pool_number = $7
-          WHERE id = $8 AND raffle_id = $9
+          SET tier = $1,
+              name = $2,
+              description = $3,
+              total_count = $4,
+              remaining_count = $5,
+              is_final = $6,
+              pool_number = $7,
+              image_url = $8
+          WHERE id = $9 AND raffle_id = $10
       `,
       [
         tier,
@@ -1685,6 +1693,7 @@ app.patch('/api/admin/raffles/:raffleId/prizes/:prizeId', requireAdminApi, async
         parseInt(remaining_count),
         !!is_final,
         pool_number ? parseInt(pool_number) : null,
+        image_url || null,
         parseInt(prizeId),
         parseInt(raffleId)
       ]

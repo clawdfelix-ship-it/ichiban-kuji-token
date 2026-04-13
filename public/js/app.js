@@ -553,28 +553,27 @@ function initCreateRafflePage() {
   basicForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const data = {
-      title: document.getElementById('title').value.trim(),
-      description: document.getElementById('description').value.trim(),
-      total_boxes: document.getElementById('total_boxes').value,
-      price_per_box: document.getElementById('price_per_box').value,
-      num_pools: document.getElementById('num_pools').value || 1,
-    };
+      const data = {
+        title: document.getElementById('title').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        total_boxes: document.getElementById('total_boxes').value,
+        price_per_box: document.getElementById('price_per_box').value,
+        num_pools: document.getElementById('num_pools').value || 1,
+        cover_image: document.getElementById('cover_image_url').value.trim() || null
+      };
 
     if (!data.title || !data.total_boxes || !data.price_per_box) {
       alert('請填寫所有必填欄位');
       return;
     }
 
-    try {
-      const formData = new FormData();
-      Object.entries(data).forEach(([k, v]) => formData.append(k, v));
-      const result = await apiRequest('/api/admin/raffles/create', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const result = await apiRequest('/api/admin/raffles', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
 
-      currentRaffleId = result.raffleId;
+        currentRaffleId = result.id;
 
       // Go to step 2
       document.getElementById('step1').classList.remove('active');
@@ -632,11 +631,11 @@ function initCreateRafflePage() {
       try {
         for (let i = 0; i < defaultItems.length; i++) {
           const p = defaultItems[i];
-          const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/items/add`, {
+          const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes`, {
             method: 'POST',
             body: JSON.stringify(p)
           });
-          itemsAdded.push({ ...p, id: result.itemId });
+          itemsAdded.push({ ...p, id: result.id, remaining_count: p.total_count });
           btn.textContent = `載入中... ${i + 1}/${defaultItems.length}`;
         }
 
@@ -704,10 +703,13 @@ async function addItem() {
     };
 
     if (editingItemId) {
-      await apiRequest(`/api/admin/raffles/${currentRaffleId}/items/${editingItemId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload)
-      });
+        await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${editingItemId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            ...payload,
+            remaining_count: payload.total_count
+          })
+        });
 
       itemsAdded = itemsAdded.map(p =>
         p.id === editingItemId ? { ...p, ...payload, total_count: payload.total_count } : p
@@ -715,13 +717,13 @@ async function addItem() {
       editingItemId = null;
       document.getElementById('addItemBtn').textContent = '新增此商品';
     } else {
-      const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/items/add`, {
+      const result = await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes`, {
         method: 'POST',
         body: JSON.stringify(payload)
       });
 
       itemsAdded.push({
-        id: result.itemId,
+        id: result.id,
         ...payload
       });
     }
@@ -807,7 +809,7 @@ function renderItemList() {
       if (action === 'delete') {
         if (!confirm('確定要刪除此商品嗎?')) return;
         try {
-          await apiRequest(`/api/admin/raffles/${currentRaffleId}/items/${item.id}`, { method: 'DELETE' });
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${item.id}`, { method: 'DELETE' });
           itemsAdded = itemsAdded.filter(p => p.id !== id);
           if (editingItemId === id) {
             editingItemId = null;
@@ -829,14 +831,15 @@ function renderItemList() {
         if (!nextTotal || nextTotal < 1) return;
         btn.disabled = true;
         try {
-          await apiRequest(`/api/admin/raffles/${currentRaffleId}/items/${item.id}`, {
-            method: 'PUT',
+          await apiRequest(`/api/admin/raffles/${currentRaffleId}/prizes/${item.id}`, {
+            method: 'PATCH',
             body: JSON.stringify({
               tier: item.tier,
               name: item.name,
               description: item.description,
               image_url: item.image_url,
               total_count: nextTotal,
+              remaining_count: nextTotal,
               is_final: !!item.is_final,
               pool_number: item.is_final ? item.pool_number || 1 : null
             })
