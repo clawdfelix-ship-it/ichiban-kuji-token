@@ -367,23 +367,72 @@ const stripeClient = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 const TOKENS_PER_BOX = 299;
 
 app.get('/api/admin/stripe/debug', requireAdminApi, async (req, res) => {
-  res.json({
+  const out = {
     stripe: {
       has_secret_key: !!stripeSecretKey,
       secret_key_prefix: stripeSecretKey ? stripeSecretKey.slice(0, 7) : null,
-      has_webhook_secret: !!stripeWebhookSecret
+      has_webhook_secret: !!stripeWebhookSecret,
+      api_ok: null,
+      api_error: null
+    },
+    db: {
+      has_postgres_url: !!connectionString,
+      ok: null,
+      token_balance_column: null,
+      token_topups_table: null,
+      error: null
     },
     env: {
       vercel: !!process.env.VERCEL,
-      has_postgres_url: !!connectionString,
       has_session_secret: !!process.env.SESSION_SECRET
     }
-  });
+  };
+
+  if (stripeClient && stripeSecretKey.startsWith('sk_')) {
+    try {
+      const acct = await stripeClient.accounts.retrieve();
+      out.stripe.api_ok = true;
+      out.stripe.account_id = acct?.id || null;
+    } catch (err) {
+      out.stripe.api_ok = false;
+      out.stripe.api_error = err?.message || 'Stripe error';
+    }
+  }
+
+  if (connectionString) {
+    try {
+      await dbQuery('SELECT 1');
+      out.db.ok = true;
+
+      const col = await dbQuery(
+        `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'token_balance' LIMIT 1`
+      );
+      out.db.token_balance_column = col.rows.length > 0;
+
+      const tbl = await dbQuery(
+        `SELECT 1 FROM information_schema.tables WHERE table_name = 'token_topups' LIMIT 1`
+      );
+      out.db.token_topups_table = tbl.rows.length > 0;
+    } catch (err) {
+      out.db.ok = false;
+      out.db.error = err?.message || 'DB error';
+    }
+  }
+
+  res.json(out);
 });
 
 app.get('/api/wallet/balance', requireAuthApi, async (req, res) => {
-  const result = await dbQuery('SELECT token_balance FROM users WHERE id = $1', [req.session.user.id]);
-  res.json({ token_balance: result.rows[0]?.token_balance || 0 });
+  try {
+    if (!connectionString) {
+      return res.status(500).json({ error: 'POSTGRES_URL 未設定' });
+    }
+    const result = await dbQuery('SELECT token_balance FROM users WHERE id = $1', [req.session.user.id]);
+    res.json({ token_balance: result.rows[0]?.token_balance || 0 });
+  } catch (err) {
+    console.error('Wallet balance failed:', err);
+    res.status(500).json({ error: err?.message || 'Server error' });
+  }
 });
 
 app.post('/api/wallet/stripe/checkout', requireAuthApi, async (req, res) => {
